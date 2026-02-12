@@ -12,3 +12,17 @@ dependencies = []
 [build-system]
 requires = ["uv_build>=0.9.7,<0.10.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hatch>=1.14.1,<1.15.0",
+    "pyrefly>=0.24.2",
+    "pytest>=8.4.1",
+    "ruff>=0.12.4",
+]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+version_scheme = "no-guess-dev"
