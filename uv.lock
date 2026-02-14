@@ -26,6 +26,15 @@ wheels = [
 ]
 
 [[package]]
+name = "btreeny"
+version = "0.1.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/f5/7de8aba359ccf01b66e1d0d4a0958667785a05dab9446edc3e8d398c1679/btreeny-0.1.5.tar.gz", hash = "sha256:a6542d9326cc6569ef2945a4bfa690b0c581774bc5be0ecd3fe8f1fd69e5f8c9", size = 77936, upload-time = "2025-08-13T07:58:56.407Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/66/07f209982b330e19c7abfcd4cbb897804ba2d194f209c2d4e90a9b8b8e76/btreeny-0.1.5-py3-none-any.whl", hash = "sha256:31036ec082fe5579f1bf2ba18a82944ef64e9e24f46ddb270ece9bd90e033ff8", size = 10724, upload-time = "2025-08-13T07:58:54.991Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -688,6 +697,7 @@ source = { editable = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "btreeny" },
     { name = "hatch" },
     { name = "pyrefly" },
     { name = "pytest" },
@@ -698,6 +708,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "btreeny", specifier = ">=0.1.5" },
     { name = "hatch", specifier = ">=1.14.1,<1.15.0" },
     { name = "pyrefly", specifier = ">=0.24.2" },
     { name = "pytest", specifier = ">=8.4.1" },

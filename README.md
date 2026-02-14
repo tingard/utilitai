@@ -43,6 +43,9 @@ def can_reach_goal_with_battery(ctx: MyContext):
     movable_distance = ctx.remaining_battery_mAh * ctx.meters_per_mAh
     return 1.0 if movable_distance > distance else 0.0
 
+@consideration
+def has_valid_path(ctx: MyContext):
+    return 1.0
 
 def main():
     actions = {
@@ -53,7 +56,7 @@ def main():
         "recharge": remaining_robot_battery,
         # Make progress towards our goal location
         "move_to_goal": has_valid_path,
-        "replan_path": lambda ctx: utilitai.inverse_linear(has_valid_path(ctx)),
+        "replan_path": lambda ctx: utilitai.curves.inverse_linear(has_valid_path(ctx)),
         # Dancing before we make it to the goal would be silly!
         "do_a_dance": is_at_goal,
     }

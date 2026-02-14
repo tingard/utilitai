@@ -1,33 +1,15 @@
 import contextvars
+import copy
 import logging
-import sys
 from typing import Callable, Generic, TypeVar, overload
 
+from . import curves
+
 ContextType = TypeVar("ContextType")
-ActionType = TypeVar("ActionType")
+GoalType = TypeVar("GoalType")
 _considerations_on_tick = contextvars.ContextVar("considerations_on_tick", default={})
 
 _logger = logging.getLogger(__name__)
-
-
-#####################################################################################################
-# Response curves
-#####################################################################################################
-def eps(*a, **k):
-    return sys.float_info.epsilon
-
-
-def linear(val: float) -> float:
-    return val
-
-
-def inverse_linear(val: float) -> float:
-    return 1 - val
-
-
-# TODO: what other builtins should we offer?
-# https://www.gameaipro.com/GameAIPro/GameAIPro_Chapter09_An_Introduction_to_Utility_Theory.pdf
-# https://www.gameaipro.com/GameAIPro3/GameAIPro3_Chapter13_Choosing_Effective_Utility-Based_Considerations.pdf
 
 
 #####################################################################################################
@@ -37,7 +19,7 @@ class Consideration(Generic[ContextType]):
     def __init__(
         self,
         func: Callable[[ContextType], float],
-        response_curve: Callable[[float], float] = linear,
+        response_curve: Callable[[float], float] = curves.linear,
         name: str | None = None,
     ):
         self._func = func
@@ -45,12 +27,15 @@ class Consideration(Generic[ContextType]):
         self._response_curve = response_curve
 
     def __call__(self, context: ContextType):
+        considerations = copy.copy(_considerations_on_tick.get())
+        if (cached := considerations.get(self._name, None)) is not None:
+            return cached
         raw = self._func(context)
-        considerations = _considerations_on_tick.get()
         considerations[self._func.__name__] = raw
         utility = self._response_curve(raw)
         considerations[self._name] = utility
         _considerations_on_tick.set(considerations)
+        _logger.debug(f"Consideration({self._name}, raw={raw}, utility={utility})")
         return utility
 
     def raw(self, context: ContextType) -> float:
@@ -60,9 +45,9 @@ class Consideration(Generic[ContextType]):
         self, other: Callable[[ContextType], float]
     ) -> "Consideration[ContextType]":
         if isinstance(other, Consideration):
-            name = f"{self._name}x{other._name}"
+            name = f"mul({self._name}, {other._name})"
         else:
-            name = f"{self._name}x{other.__name__}"
+            name = f"mul({self._name}, {other.__name__})"
         return Consideration(
             func=lambda ctx: self(ctx) * other(ctx),
             name=name,
@@ -95,9 +80,9 @@ class Consideration(Generic[ContextType]):
 
 @overload
 def consideration(  # pyrefly: ignore
-    func: None,
+    func: None = None,
     *,
-    response_curve: Callable[[float], float] = linear,
+    response_curve: Callable[[float], float],
     name: str | None = None,
 ) -> Callable[[Callable[[ContextType], float]], Consideration[ContextType]]:
     raise NotImplementedError()
@@ -107,16 +92,15 @@ def consideration(  # pyrefly: ignore
 def consideration(
     func: Callable[[ContextType], float],
     *,
-    response_curve: Callable[[float], float] = linear,
+    response_curve: Callable[[float], float],
     name: str | None = None,
 ) -> Consideration[ContextType]:
     raise NotImplementedError()
 
 
 def consideration(
-    func: Callable[[ContextType], float] | None,
-    *,
-    response_curve: Callable[[float], float] = linear,
+    func: Callable[[ContextType], float] | None = None,
+    response_curve: Callable[[float], float] = curves.linear,
     name: str | None = None,
 ):
     if func is None:
@@ -140,38 +124,52 @@ def consideration(
 # Utility System
 #####################################################################################################
 def utility_system(
-    actions_dict: dict[ActionType, Callable[[ContextType], float] | Consideration],
+    goals: dict[GoalType, Callable[[ContextType], float] | Consideration],
     # TODO logging configuration (rerun, rich, custom, ...)
-) -> Callable[[ContextType], ActionType | None]:
-    """TODO"""
+) -> Callable[[ContextType], GoalType | None]:
+    """Create a utility system that selects the best goal for a given context.
 
-    def _inner(context: ContextType) -> ActionType | None:
-        """Determine the best action to take, given some context.
+    This function accepts a mapping of goals to scoring functions (or
+    ``Consideration`` instances) and returns a callable that, when invoked with a
+    context object, evaluates every goal's utility and returns the one with the
+    highest score.
 
-        Parameters
-        ----------
-        TODO
-        """
+    Parameters
+    ----------
+    goals : dict[GoalType, Callable[[ContextType], float] | Consideration]
+        A dictionary mapping goal identifiers to callables (or
+        :class:`Consideration` instances) that accept a context and return a
+        float representing the utility of that goal.
+
+    Returns
+    -------
+    Callable[[ContextType], GoalType | None]
+        A function that takes a context object and returns the goal with
+        the highest utility score, or ``None`` if *goals* is empty.
+    """
+
+    def tick(context: ContextType) -> GoalType | None:
+        """Determine the best goal to take, given some context."""
         ctx = contextvars.copy_context()
 
         def _compute_within_context():
             best_utility = -float("inf")
-            best_action: ActionType | None = None
-            for action_id, action_response_curve in actions_dict.items():
-                action_utility = action_response_curve(context)
-                if action_utility > best_utility:
-                    best_action = action_id
-                    best_utility = action_utility
-            return best_action
+            best_goal: GoalType | None = None
+            for goal_id, goal_response_curve in goals.items():
+                goal_utility = goal_response_curve(context)
+                if goal_utility > best_utility:
+                    best_goal = goal_id
+                    best_utility = goal_utility
+            return best_goal
 
-        best_action = ctx.run(_compute_within_context)
-        logging.debug(
+        best_goal = ctx.run(_compute_within_context)
+        _logger.debug(
             "Computed considerations",
             extra={
                 "considerations": ctx[_considerations_on_tick],
-                "best_action": best_action,
+                "best_goal": best_goal,
             },
         )
-        return best_action
+        return best_goal
 
-    return _inner
+    return tick
