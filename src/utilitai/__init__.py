@@ -142,9 +142,6 @@ def consideration(  # pyrefly: ignore
 @overload
 def consideration(
     func: Callable[[ContextType], float],
-    *,
-    response_curve: Callable[[float], float],
-    name: str | None = None,
 ) -> Consideration[ContextType]:
     raise NotImplementedError()
 
