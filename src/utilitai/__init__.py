@@ -42,10 +42,17 @@ class Consideration(Generic[ContextType]):
         return self._func(context)
 
     def __mul__(
-        self, other: Callable[[ContextType], float]
+        self,
+        other: Callable[[ContextType], float] | float,
     ) -> "Consideration[ContextType]":
         if isinstance(other, Consideration):
             name = f"mul({self._name}, {other._name})"
+        elif isinstance(other, float):
+            name = f"mul({self._name}, {other})"
+            return Consideration(
+                func=lambda ctx: self(ctx) * other,
+                name=name,
+            )
         else:
             name = f"mul({self._name}, {other.__name__})"
         return Consideration(
@@ -54,10 +61,16 @@ class Consideration(Generic[ContextType]):
         )
 
     def min(
-        self, other: Callable[[ContextType], float]
+        self, other: Callable[[ContextType], float] | float
     ) -> "Consideration[ContextType]":
         if isinstance(other, Consideration):
             name = f"min({self._name}, {other._name})"
+        elif isinstance(other, float):
+            name = f"min({self._name}, {other})"
+            return Consideration(
+                func=lambda ctx: min(self(ctx), other),
+                name=name,
+            )
         else:
             name = f"min({self._name}, {other.__name__})"
         return Consideration(
@@ -66,10 +79,16 @@ class Consideration(Generic[ContextType]):
         )
 
     def max(
-        self, other: Callable[[ContextType], float]
+        self, other: Callable[[ContextType], float] | float
     ) -> "Consideration[ContextType]":
         if isinstance(other, Consideration):
             name = f"max({self._name}, {other._name})"
+        elif isinstance(other, float):
+            name = f"max({self._name}, {other})"
+            return Consideration(
+                func=lambda ctx: max(self(ctx), other),
+                name=name,
+            )
         else:
             name = f"max({self._name}, {other.__name__})"
         return Consideration(
