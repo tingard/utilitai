@@ -3,25 +3,6 @@ import pytest
 from utilitai import curves
 
 
-class TestEps:
-    def test_returns_float(self):
-        assert isinstance(curves.eps(), float)
-
-    def test_returns_machine_epsilon(self):
-        import sys
-
-        assert curves.eps() == sys.float_info.epsilon
-
-    def test_ignores_positional_args(self):
-        assert curves.eps(1, 2, 3) == curves.eps()
-
-    def test_ignores_keyword_args(self):
-        assert curves.eps(a=1, b=2) == curves.eps()
-
-    def test_greater_than_zero(self):
-        assert curves.eps() > 0
-
-
 class TestLinear:
     def test_zero(self):
         assert curves.linear(0.0) == 0.0
@@ -137,6 +118,11 @@ class TestExponential:
         high_base = curves.exponential(0.5, base=10.0)
         assert high_base < low_base
 
+    @pytest.mark.parametrize("base", [1.0, 0.5, 0.0, -2.0])
+    def test_rejects_base_of_one_or_less(self, base):
+        with pytest.raises(ValueError):
+            curves.exponential(0.5, base=base)
+
 
 class TestSmoothstep:
     def test_zero(self):
@@ -164,3 +150,25 @@ class TestSmoothstep:
         # boundaries should be very close to the boundary values
         assert curves.smoothstep(0.01) < 0.01  # slower than linear near 0
         assert curves.smoothstep(0.99) > 0.99  # slower than linear near 1
+
+
+class TestIsGtZero:
+    def test_positive(self):
+        assert curves.is_gt_zero(0.1) == 1.0
+
+    def test_zero(self):
+        assert curves.is_gt_zero(0.0) == 0.0
+
+    def test_negative(self):
+        assert curves.is_gt_zero(-1.0) == 0.0
+
+
+class TestIsLeZero:
+    def test_positive(self):
+        assert curves.is_le_zero(0.1) == 0.0
+
+    def test_zero(self):
+        assert curves.is_le_zero(0.0) == 1.0
+
+    def test_negative(self):
+        assert curves.is_le_zero(-1.0) == 1.0

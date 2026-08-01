@@ -8,4 +8,4 @@ type:
   uv run pyrefly check src
 
 test:
-  uv run python -m pytest tests
+  uv run python -m pytest tests --doctest-modules src

@@ -1,16 +1,25 @@
-import logging
-import sys
+"""Response curves: small functions which shape a raw value into a score.
 
-_logger = logging.getLogger(__name__)
+Scoring functions are plain Python, so curves are composed by calling them::
 
+    @things.add("eat food")
+    def eat_food(ctx: Context) -> float:
+        return curves.exponential(ctx.hunger) * curves.is_gt_zero(ctx.food)
+"""
 
-def eps(*_a, **_k):
-    """Return machine epsilon, ignoring any arguments.
+import math
 
-    This is useful as a near-zero floor value that avoids true zero in
-    calculations (e.g. to prevent division-by-zero).
-    """
-    return sys.float_info.epsilon
+__all__ = [
+    "exponential",
+    "inverse_linear",
+    "inverse_quadratic",
+    "is_gt_zero",
+    "is_le_zero",
+    "linear",
+    "logistic",
+    "quadratic",
+    "smoothstep",
+]
 
 
 def linear(val: float) -> float:
@@ -46,8 +55,6 @@ def logistic(val: float, midpoint: float = 0.5, steepness: float = 10.0) -> floa
     steepness : float
         How steep the transition is around the midpoint.
     """
-    import math
-
     return 1.0 / (1.0 + math.exp(-steepness * (val - midpoint)))
 
 
@@ -62,7 +69,14 @@ def exponential(val: float, base: float = 2.0) -> float:
         Input value, typically in [0, 1].
     base : float
         Controls how aggressively the curve rises (must be > 1).
+
+    Raises
+    ------
+    ValueError
+        If *base* is not greater than one.
     """
+    if base <= 1.0:
+        raise ValueError(f"base must be greater than one, got {base}")
     return (base**val - 1.0) / (base - 1.0)
 
 
@@ -71,6 +85,9 @@ def smoothstep(val: float) -> float:
 
     Provides a smooth ease-in / ease-out transition between 0 and 1,
     useful when you want a softer version of a linear ramp.
+
+    Unlike the other curves, the input is clamped to [0, 1] - outside that
+    range the polynomial turns back on itself and stops being monotonic.
     """
     val = max(0.0, min(1.0, val))
     return val * val * (3.0 - 2.0 * val)
