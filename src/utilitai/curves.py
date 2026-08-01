@@ -1,18 +1,25 @@
-import logging
-import sys
+"""Response curves: small functions which shape a raw value into a score.
 
-_logger = logging.getLogger(__name__)  # @CR: Unused — remove or use it.
+Scoring functions are plain Python, so curves are composed by calling them::
 
+    @things.add("eat food")
+    def eat_food(ctx: Context) -> float:
+        return curves.exponential(ctx.hunger) * curves.is_gt_zero(ctx.food)
+"""
 
-def eps(
-    *_a, **_k
-):  # @CR: Accepting *args/**kwargs silently swallows caller mistakes. Since this is used as a response curve (Callable[[float], float]), consider a single ignored parameter like `(_val: float = 0.0)` to match the expected signature and let type checkers help.
-    """Return machine epsilon, ignoring any arguments.
+import math
 
-    This is useful as a near-zero floor value that avoids true zero in
-    calculations (e.g. to prevent division-by-zero).
-    """
-    return sys.float_info.epsilon
+__all__ = [
+    "exponential",
+    "inverse_linear",
+    "inverse_quadratic",
+    "is_gt_zero",
+    "is_le_zero",
+    "linear",
+    "logistic",
+    "quadratic",
+    "smoothstep",
+]
 
 
 def linear(val: float) -> float:
@@ -35,11 +42,6 @@ def inverse_quadratic(val: float) -> float:
     return 1 - (1 - val) * (1 - val)
 
 
-# @CR: `logistic` and `exponential` have extra parameters beyond `val`, so they don't
-# satisfy `Callable[[float], float]` as far as strict type checkers are concerned (even
-# though defaults make them callable with one arg at runtime). Consider either providing
-# factory functions (e.g. `def logistic(midpoint, steepness) -> Callable`) or using
-# `functools.partial` helpers so the returned curves cleanly match the expected signature.
 def logistic(val: float, midpoint: float = 0.5, steepness: float = 10.0) -> float:
     """Logistic (sigmoid) response curve. Creates an S-shaped curve that
     transitions sharply around the midpoint.
@@ -53,8 +55,6 @@ def logistic(val: float, midpoint: float = 0.5, steepness: float = 10.0) -> floa
     steepness : float
         How steep the transition is around the midpoint.
     """
-    import math  # @CR: Move `import math` to the top of the file.
-
     return 1.0 / (1.0 + math.exp(-steepness * (val - midpoint)))
 
 
@@ -69,10 +69,14 @@ def exponential(val: float, base: float = 2.0) -> float:
         Input value, typically in [0, 1].
     base : float
         Controls how aggressively the curve rises (must be > 1).
+
+    Raises
+    ------
+    ValueError
+        If *base* is not greater than one.
     """
-    # @CR: The docstring says `base` must be > 1 but there's no validation.
-    # base == 1 causes ZeroDivisionError; base < 1 silently produces wrong results.
-    # Add a guard: `if base <= 1: raise ValueError(...)`.
+    if base <= 1.0:
+        raise ValueError(f"base must be greater than one, got {base}")
     return (base**val - 1.0) / (base - 1.0)
 
 
@@ -81,16 +85,15 @@ def smoothstep(val: float) -> float:
 
     Provides a smooth ease-in / ease-out transition between 0 and 1,
     useful when you want a softer version of a linear ramp.
+
+    Unlike the other curves, the input is clamped to [0, 1] - outside that
+    range the polynomial turns back on itself and stops being monotonic.
     """
-    val = max(
-        0.0, min(1.0, val)
-    )  # @CR: This is the only curve that clamps input to [0, 1]. The inconsistency could surprise users — consider either clamping all curves or documenting why this one is special.
+    val = max(0.0, min(1.0, val))
     return val * val * (3.0 - 2.0 * val)
 
 
-def is_gt_zero(
-    val: float,
-) -> float:  # @CR: The `is_` prefix reads like a boolean predicate. Consider `step_gt_zero` / `step_le_zero` (or similar) to signal that these return 0.0/1.0 floats.
+def is_gt_zero(val: float) -> float:
     """Step function which returns one if the value is greater than
     zero else zero.
     """
