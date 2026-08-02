@@ -129,8 +129,8 @@ class ToConsider[ContextType_contra]:
     def consideration(
         self, name_or_func: str | ScoreFunction, /
     ) -> ScoreFunction | Callable[[ScoreFunction], ScoreFunction]:
-        """Add a consideration which one or many options,other considerations,
-        or requirments may depend on.
+        """Add a consideration which one or many options or other
+        considerations, may depend on.
         """
         return self.__add_node("consideration", name_or_func)
 
@@ -294,7 +294,13 @@ class ToConsider[ContextType_contra]:
         priority: int = 0,
     ) -> ScoreFunction:
         if not isinstance(name, str):
-            raise TypeError("Name must be a string.")
+            raise TypeError("Name must be a valid string identifier.")
+        if typ == "consideration" and not name.isidentifier():
+            raise TypeError(
+                "Consideration name must be a valid string identifier to be used in"
+                " the dependency tree! This means only names you could use as a"
+                " variable."
+            )
         if name in self._nodes:
             raise ValueError(f"A function named {name!r} has already been added")
         sig = inspect.signature(func, eval_str=True)
@@ -305,8 +311,9 @@ class ToConsider[ContextType_contra]:
                 raise ValueError(f'Unknown dependency "{arg.name}"')
             if not isinstance(arg.annotation, type):
                 raise TypeError("Cannot handle this kind of type annotation.")
-            if arg.annotation is inspect.Parameter.empty or not issubclass(
-                arg.annotation, (int, float)
+            if (
+                not issubclass(arg.annotation, (int, float))
+                and arg.annotation is not inspect.Parameter.empty
             ):
                 raise ValueError(
                     f'Expected type annotation as a float or int, got "{arg.annotation}"'

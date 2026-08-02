@@ -1,6 +1,6 @@
 # Welcome to utilitai!
 
-This package is a minimal(ish) implementation of [Utility AI](https://en.wikipedia.org/wiki/Utility_system) in Python. It is designed to compliment [btreeny](https://github.com/tingard/btreeny), my Behaviour Trees implementation!
+This package is a minimal(ish) implementation of [Utility AI](https://en.wikipedia.org/wiki/Utility_system) in Python. It is designed to complement [btreeny](https://github.com/tingard/btreeny), my Behaviour Trees implementation!
 
 There actually aren't many options for utility AI in Python, which surprises me! In general for _serious_ systems you should be looking at C++ (or, maybe, Rust 🦀), but hopefully this library will help on the prototyping journey!
 
@@ -32,7 +32,7 @@ things: ToConsider[Context] = ToConsider()
 # And then add options to consider
 @things.option("go to the shops")
 def go_to_the_shops(ctx: Context):
-    hunger_level = curves.logistic(hunger / MAX_HUNGER, midpoint=0.5)
+    hunger_level = curves.logistic(ctx.hunger / MAX_HUNGER, midpoint=0.5)
     return hunger_level * curves.is_gt_zero(ctx.money)
 
 
@@ -80,7 +80,7 @@ def order_a_takeaway(ctx: Context):
 - `things.consider(context)` returns the name of the highest scoring option. If two options tie, they fall back to priority and then alphabetic on name. Take this into consideration!
 - `things.constant_option(name, value)` adds an option with a fixed score. This is the usual way to express "if nothing else appeals, do this".
 - `things.score(context)` returns every option's score as a dict, which is useful in tests and when tuning curves.
-- `consider` raises `ValueError` if nothing has been added, and `add` raises `ValueError` on a duplicate name.
+- `consider` raises `ValueError` if nothing has been added, and `option` raises `ValueError` on a duplicate name.
 
 Each call to `consider` logs the full set of scores at `DEBUG` level under the `utilitai` logger, so you can see why a decision was made:
 
@@ -125,8 +125,8 @@ def hunger_level(ctx: Context):
 # Note that now the utility of eat_food and go_to_the_shops will be
 # identical - making it easy to spot undesirable ties.
 # Ties are broken using a priority flag (which defaults to 0)
-@things.option
-def eat_food(ctx: Context, has_food: float, hunger_level: float, priority=1):
+@things.option("eat_food", priority=1)
+def eat_food(ctx: Context, has_food: float, hunger_level: float):
     return hunger_level
 
 
@@ -137,7 +137,7 @@ def go_to_the_shops(ctx: Context, has_money: float, hunger_level: float):
 
 things.constant_option("do nothing", 0.1)
 
-current_context = Context(hunger=1, money=1, food=0)
+current_context = Context(hunger=5, money=1, food=0)
 action = things.consider(current_context)
 assert action == "go to the shops"
 ```
@@ -180,4 +180,4 @@ while True:
     control_robot_from_action(best_action, state)
 ```
 
-The full version lives in [`examples/readme_example.py`](examples/readme_example.py), and [`examples/eat_sleep_forage.py`](examples/eat_sleep_forage.py) is a runnable simulation of a hunter-gatherer trying not to starve.
+There are also a growing number of [examples](./examples) available for you to peruse.
