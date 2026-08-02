@@ -11,6 +11,7 @@ import graphlib
 import inspect
 import logging
 import math
+from collections import deque
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import (
@@ -75,6 +76,7 @@ class ToConsider[ContextType_contra]:
     def __init__(self) -> None:
         self._options: set[str] = set()
         self._nodes: dict[str, _DAGNode[ContextType_contra]] = {}
+        self._sort_cache: None | tuple[str, ...] = None
 
     def __len__(self) -> int:
         return len(self._nodes)
@@ -237,7 +239,8 @@ class ToConsider[ContextType_contra]:
     def consider(self, context: ContextType_contra) -> str:
         """Return the name of the highest scoring option for *context*.
 
-        Ties are broken in favour of whichever option was added first.
+        Ties are broken using priority specification, followed by
+        sorting by name.
 
         Raises
         ------
@@ -267,18 +270,20 @@ class ToConsider[ContextType_contra]:
         """
         if len(scores) == 0:
             raise ValueError("Nothing to consider - no options have been added")
+        if not all(s in self._options for s in scores):
+            missing = [s for s in scores if s not in self._options]
+            raise ValueError(f"Unrecognised option name(s): {', '.join(missing)}")
+
+        def _key(k):
+            score_ = scores[k]
+            # Handle that this might be ScoreWithDeps
+            if isinstance(score_, tuple):
+                score = score_.score
+            else:
+                score = score_
+            return (-score, -self._nodes[k].priority, k)
 
         try:
-
-            def _key(k):
-                score_ = scores[k]
-                # Handle that this might be ScoreWithDeps
-                if isinstance(score_, tuple):
-                    score = score_.score
-                else:
-                    score = score_
-                return (-score, -self._nodes[k].priority, k)
-
             best = min(scores, key=_key)
         except KeyError as e:
             raise KeyError(
@@ -303,20 +308,23 @@ class ToConsider[ContextType_contra]:
             )
         if name in self._nodes:
             raise ValueError(f"A function named {name!r} has already been added")
-        sig = inspect.signature(func, eval_str=True)
+        sig = inspect.signature(func)
         considerations = []
         # Zeroth arg must be ctx
         for arg in list(sig.parameters.values())[1:]:
             if (v := self._nodes.get(arg.name, None)) is None:
                 raise ValueError(f'Unknown dependency "{arg.name}"')
-            if not isinstance(arg.annotation, type):
+            if isinstance(arg.annotation, str):
+                if arg.annotation != "float":
+                    raise TypeError(f'Cannot handle type annotation "{arg.annotation}"')
+            elif not isinstance(arg.annotation, type):
                 raise TypeError("Cannot handle this kind of type annotation.")
-            if (
-                not issubclass(arg.annotation, (int, float))
+            elif (
+                arg.annotation is not float
                 and arg.annotation is not inspect.Parameter.empty
             ):
-                raise ValueError(
-                    f'Expected type annotation as a float or int, got "{arg.annotation}"'
+                raise TypeError(
+                    f'Expected type annotation as a float, got "{arg.annotation}"'
                 )
             match v.typ:
                 case "consideration":
@@ -341,13 +349,28 @@ class ToConsider[ContextType_contra]:
             raise ValueError("Cannot create a cyclic chain of considerations") from e
         if typ == "option":
             self._options.add(name)
+        self._sort_cache = None
         return func
 
-    def _get_dag_compute_order(self):
+    def _get_dag_compute_order(self) -> tuple[str, ...]:
+        if self._sort_cache is not None:
+            return self._sort_cache
+        to_include = {*self._options}
+        to_search = deque(self._options)
+        while len(to_search):
+            parent = to_search.pop()
+            not_yet_searched = [
+                node
+                for node in self._nodes[parent].considerations
+                if node not in to_include
+            ]
+            to_search.extend(not_yet_searched)
+            to_include.update(not_yet_searched)
         ts = graphlib.TopologicalSorter(
-            {name: node.considerations for name, node in self._nodes.items()}
+            {name: self._nodes[name].considerations for name in to_include}
         )
-        return tuple(ts.static_order())
+        self._sort_cache = tuple(ts.static_order())
+        return self._sort_cache
 
 
 def _infer_name(obj: Any) -> str:
