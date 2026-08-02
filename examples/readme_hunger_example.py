@@ -43,11 +43,7 @@ def hunger_level(ctx: Context):
 
 # Note that now the utility of eat_food and go_to_the_shops will be
 # identical - making it easy to spot undesirable ties.
-# Ties are broken **by the order options are added** - this is an
-# important design consideration!
-# We've now shuffled the order of  eating and shopping to respect
-# this.
-@things.option
+@things.option('eat food', priority=1)
 def eat_food(ctx: Context, has_food: float, hunger_level: float):
     return hunger_level
 
@@ -57,11 +53,11 @@ def go_to_the_shops(ctx: Context, has_money: float, hunger_level: float):
     return hunger_level
 
 
-things.constant_option("do nothing", 0.2)
+things.constant_option("do nothing", 0.2, priority=-1)
 
 action = None
 context = Context(hunger=0, money=2, food=0)
-for _ in range(0, 15):
+for _ in range(15):
     context.hunger += 1
     scores = things.score(context)
     action = things.consider_from_scores({k: v for k, (v, _) in scores.items()})
@@ -73,6 +69,6 @@ for _ in range(0, 15):
     if action == "go to the shops":
         context.money -= 1
         context.food += 1
-    if action == "eat_food":
+    if action == "eat food":
         context.food -= 1
         context.hunger = 0

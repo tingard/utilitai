@@ -19,7 +19,7 @@ dev = [
     "hatch>=1.14.1,<1.15.0",
     "pyrefly>=0.24.2",
     "pytest>=8.4.1",
-    "ruff>=0.12.4",
+    "ruff>=0.16",
 ]
 
 [tool.hatch.version]

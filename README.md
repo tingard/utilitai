@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from utilitai import ToConsider, curves
 
+
 # In order to make decisions, we need context - this can be anything but
 # a dataclass is a logical choice
 @dataclass
@@ -20,29 +21,34 @@ class Context:
     hunger: int
     money: int
     food: int
+
+
 MAX_HUNGER = 10
 
 # We create a registry object which is generic over the context
 things: ToConsider[Context] = ToConsider()
 
+
 # And then add options to consider
-@things.option('go to the shops')
+@things.option("go to the shops")
 def go_to_the_shops(ctx: Context):
     hunger_level = curves.logistic(hunger / MAX_HUNGER, midpoint=0.5)
     return hunger_level * curves.is_gt_zero(ctx.money)
+
 
 # Names can be inferred from function name
 @things.option
 def eat_food(ctx: Context):
     hunger_level = curves.logistic(hunger / MAX_HUNGER, midpoint=0.5)
-    return hunger_level  * curves.is_gt_zero(ctx.food)
+    return hunger_level * curves.is_gt_zero(ctx.food)
+
 
 # We can also add anoption that has a constant utility
-things.constant_option('do nothing', 0.1)
+things.constant_option("do nothing", 0.1)
 
 current_context = Context(hunger=5, money=1, food=0)
 action = things.consider(current_context)
-assert action == 'go to the shops'
+assert action == "go to the shops"
 ```
 
 ## Scoring functions
@@ -63,7 +69,7 @@ Scores are only ever compared against each other, but keeping them in `[0, 1]` m
 Because scoring functions are plain Python, curves compose by calling them and combining the results - multiply to say "and", `max` to say "or", and multiply by a constant to weight an option against its rivals:
 
 ```python
-@things.option('order a takeaway')
+@things.option("order a takeaway")
 def order_a_takeaway(ctx: Context):
     # Weighted below the other options - it's a treat, not a necessity
     return 0.5 * curves.smoothstep(ctx.hunger) * curves.is_gt_zero(ctx.money)
@@ -92,6 +98,7 @@ In the above, we've repeated ourselves in a couple of places - for instance comp
 # We create a registry object which is generic over the context
 things: ToConsider[Context] = ToConsider()
 
+
 @things.consideration
 def has_money(ctx: Context):
     # Note that by returning `None` we signal to `utilitai` that
@@ -99,6 +106,7 @@ def has_money(ctx: Context):
     # maths.
     # Feel free to return 0.0 if you don't want this.
     return None if ctx.money == 0 else 1.0
+
 
 @things.consideration
 def has_food(ctx: Context):
@@ -108,9 +116,11 @@ def has_food(ctx: Context):
     # Feel free to return 0.0 if you don't want this.
     return None if ctx.food == 0 else 1.0
 
+
 @things.consideration
 def hunger_level(ctx: Context):
     return curves.logistic(hunger / MAX_HUNGER, midpoint=0.5)
+
 
 # Note that now the utility of eat_food and go_to_the_shops will be
 # identical - making it easy to spot undesirable ties.
@@ -119,15 +129,17 @@ def hunger_level(ctx: Context):
 def eat_food(ctx: Context, has_food: float, hunger_level: float, priority=1):
     return hunger_level
 
-@things.option('go to the shops')
+
+@things.option("go to the shops")
 def go_to_the_shops(ctx: Context, has_money: float, hunger_level: float):
     return hunger_level
 
-things.constant_option('do nothing', 0.1)
+
+things.constant_option("do nothing", 0.1)
 
 current_context = Context(hunger=1, money=1, food=0)
 action = things.consider(current_context)
-assert action == 'go to the shops'
+assert action == "go to the shops"
 ```
 
 ## A slightly bigger example
@@ -136,24 +148,28 @@ assert action == 'go to the shops'
 actions: ToConsider[RobotState] = ToConsider()
 
 # If we have no good choices, do nothing
-actions.constant_option('do nothing', 1e-6)
+actions.constant_option("do nothing", 1e-6)
 
-@actions.option('recharge')
+
+@actions.option("recharge")
 def recharge(state: RobotState) -> float:
     # As our battery gets lower, our desire to stop and recharge gets higher
     battery_used = 1 - state.remaining_battery_percentage / 100
     return curves.inverse_quadratic(battery_used)
 
-@actions.option('move to goal')
+
+@actions.option("move to goal")
 def move_to_goal(state: RobotState) -> float:
     if is_at_goal(state) or not has_valid_path(state):
         return 0.0
     return 0.9 if can_reach_goal_with_battery(state) else 0.1
 
-@actions.option('do a dance')
+
+@actions.option("do a dance")
 def do_a_dance(state: RobotState) -> float:
     # Dancing before we make it to the goal would be silly!
     return 1.0 if is_at_goal(state) else 0.0
+
 
 while True:
     # Perception
