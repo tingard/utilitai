@@ -43,7 +43,7 @@ def hunger_level(ctx: Context):
 
 # Note that now the utility of eat_food and go_to_the_shops will be
 # identical - making it easy to spot undesirable ties.
-@things.option('eat food', priority=1)
+@things.option("eat food", priority=1)
 def eat_food(ctx: Context, has_food: float, hunger_level: float):
     return hunger_level
 

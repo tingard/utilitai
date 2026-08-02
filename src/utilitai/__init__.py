@@ -27,13 +27,13 @@ __all__ = ["ScoreFunction", "ToConsider", "curves"]
 
 ContextType_contra = TypeVar("ContextType_contra", contravariant=True)
 
+ScoreFunction = Callable[..., float | None]
 """Scores how appealing an option is, given some context.
 
 Scores are compared against each other, so any float will do - but keeping
 them normalised (usually to ``[0, 1]``, using the helpers in
 :mod:`utilitai.curves`) makes them far easier to reason about.
 """
-ScoreFunction = Callable[..., float | None]
 
 
 _logger = logging.getLogger(__name__)
@@ -77,21 +77,21 @@ class ToConsider[ContextType_contra]:
         self._nodes: dict[str, _DAGNode[ContextType_contra]] = {}
 
     def __len__(self) -> int:
-        return len(self._options)
+        return len(self._nodes)
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._options)
+        return iter(self._nodes)
 
     def __contains__(self, name: object) -> bool:
-        return name in self._options
+        return name in self._nodes
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({', '.join(map(repr, self._options))})"
+        return f"{type(self).__name__}({', '.join(map(repr, self._nodes))})"
 
     @property
     def names(self) -> tuple[str, ...]:
-        """The name of every option (not in any order)"""
-        return tuple(self._options)
+        """The name of every option or consideration (in no particular order)."""
+        return tuple(self._nodes)
 
     def __add_node(
         self,
@@ -181,6 +181,8 @@ class ToConsider[ContextType_contra]:
         Useful as a baseline: a constant option wins whenever nothing else
         scores above it.
         """
+        if math.isnan(value):
+            raise ValueError("Constant option value cannot be NaN.")
         if not isinstance(name, str):
             raise TypeError("Name must be a string")
         value = float(value)
@@ -291,10 +293,10 @@ class ToConsider[ContextType_contra]:
         typ: Literal["option", "consideration"],
         priority: int = 0,
     ) -> ScoreFunction:
-        if name in self._nodes:
-            raise ValueError(f"A function named {name!r} has already been added")
         if not isinstance(name, str):
             raise TypeError("Name must be a string.")
+        if name in self._nodes:
+            raise ValueError(f"A function named {name!r} has already been added")
         sig = inspect.signature(func, eval_str=True)
         considerations = []
         # Zeroth arg must be ctx
