@@ -111,8 +111,8 @@ def is_le_zero(val: float) -> float:
     return 1.0 if val <= 0 else 0.0
 
 
-def clamped(val: float):
+def clamped(val: float) -> float:
     """Hard-clamp a value to [0, 1]. Bounding utility scores between
     0 and 1 is recommended to aid composition.
     """
-    return min(1, max(0, val))
+    return min(1.0, max(0.0, val))
