@@ -8,6 +8,7 @@ is currently the most appealing.
 from __future__ import annotations
 
 import logging
+import math
 from typing import Callable, Generic, Iterator, TypeVar, overload
 
 from . import curves
@@ -27,6 +28,13 @@ them normalised (usually to ``[0, 1]``, using the helpers in
 _logger = logging.getLogger(__name__)
 
 
+def _log_nan(name: str, score: float):
+    if math.isnan(score):
+        _logger.warning("Option %s returned NaN", name)
+        return None
+    return score
+
+
 class ToConsider(Generic[ContextType]):
     """A registry of the options an agent can choose between.
 
@@ -38,11 +46,12 @@ class ToConsider(Generic[ContextType]):
     ... class Context:
     ...     hunger: int
     >>> things: ToConsider[Context] = ToConsider()
+    >>> MAX_HUNGER = 10
     >>> @things.add("eat food")
     ... def eat_food(ctx: Context) -> float:
-    ...     return curves.exponential(ctx.hunger)
-    >>> things.add_constant("do nothing", 0.5)
-    >>> things.consider(Context(hunger=1))
+    ...     return curves.clamped(curves.exponential(ctx.hunger / MAX_HUNGER))
+    >>> things.add_constant("do nothing", 0.1)
+    >>> things.consider(Context(hunger=7))
     'eat food'
     """
 
@@ -128,11 +137,24 @@ class ToConsider(Generic[ContextType]):
         Useful as a baseline: a constant option wins whenever nothing else
         scores above it.
         """
+        if not isinstance(name, str):
+            raise ValueError("Name must be a string")
+        value = float(value)
         self._register(name, lambda _context: value)
 
     def score(self, context: ContextType) -> dict[str, float]:
-        """Score every option against *context*, keyed by option name."""
-        return {name: func(context) for name, func in self._options.items()}
+        """Score every option against *context*, keyed by option name.
+
+        Options which return NaN or None will not be returned.
+        """
+        return {
+            name: score
+            for name, score in (
+                (name, _log_nan(name, func(context)))
+                for name, func in self._options.items()
+            )
+            if score is not None
+        }
 
     def consider(self, context: ContextType) -> str:
         """Return the name of the highest scoring option for *context*.
@@ -147,13 +169,30 @@ class ToConsider(Generic[ContextType]):
         if not self._options:
             raise ValueError("Nothing to consider - no options have been added")
         scores = self.score(context)
+        if len(scores) == 0:
+            # Score functions may have returned NaN / None.
+            raise ValueError("No good options - no valid options available.")
         # `max` returns the first maximal element, so earlier options win ties
         best = max(scores, key=scores.__getitem__)
         _logger.debug(
-            "Considered %d options, chose %r",
-            len(scores),
+            "Considered %s options, chose %r",
+            scores,
             best,
-            extra={"scores": scores, "chosen": best},
+        )
+        return best
+
+    @staticmethod
+    def consider_from_scores(scores: dict[str, float]) -> str:
+        """Utility function allowing re-use of a scoring dict. This exists to avoid
+        re-computing scores while allowing external access to the scores dict.
+        """
+        if len(scores) == 0:
+            raise ValueError("Nothing to consider - no options have been added")
+        best = max(scores, key=scores.__getitem__)
+        _logger.debug(
+            "Considered %s options, chose %r",
+            scores,
+            best,
         )
         return best
 
@@ -162,8 +201,13 @@ class ToConsider(Generic[ContextType]):
     ) -> ScoreFunction[ContextType]:
         if name in self._options:
             raise ValueError(f"An option named {name!r} has already been added")
+        if not isinstance(name, str):
+            raise ValueError("Name must be a string.")
         self._options[name] = func
         return func
+
+    def __getitem__(self, name: str) -> ScoreFunction[ContextType]:
+        return self._options[name]
 
 
 def _infer_name(func: Callable[..., float]) -> str:

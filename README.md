@@ -27,7 +27,7 @@ things: ToConsider[Context] = ToConsider()
 # And then add options to consider
 @things.add('go to the shops')
 def go_to_the_shops(ctx: Context):
-    return curves.exponential(ctx.hunger) * curves.is_gt_zero(ctx.money)
+    return curves.clamped(curves.exponential(ctx.hunger)) * curves.is_gt_zero(ctx.money)
 
 # Names can be inferred from function name
 @things.add

@@ -4,7 +4,7 @@ Scoring functions are plain Python, so curves are composed by calling them::
 
     @things.add("eat food")
     def eat_food(ctx: Context) -> float:
-        return curves.exponential(ctx.hunger) * curves.is_gt_zero(ctx.food)
+        return curves.clamped(curves.exponential(ctx.hunger) * curves.is_gt_zero(ctx.food))
 """
 
 import math
@@ -55,7 +55,11 @@ def logistic(val: float, midpoint: float = 0.5, steepness: float = 10.0) -> floa
     steepness : float
         How steep the transition is around the midpoint.
     """
-    return 1.0 / (1.0 + math.exp(-steepness * (val - midpoint)))
+    z = steepness * (val - midpoint)
+    if z >= 0:
+        return 1.0 / (1.0 + math.exp(-z))
+    exp_z = math.exp(z)
+    return exp_z / (1.0 + exp_z)
 
 
 def exponential(val: float, base: float = 2.0) -> float:
@@ -105,3 +109,10 @@ def is_le_zero(val: float) -> float:
     equal to zero, else zero.
     """
     return 1.0 if val <= 0 else 0.0
+
+
+def clamped(val: float) -> float:
+    """Hard-clamp a value to [0, 1]. Bounding utility scores between
+    0 and 1 is recommended to aid composition.
+    """
+    return min(1.0, max(0.0, val))
