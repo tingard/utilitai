@@ -10,6 +10,7 @@ Scoring functions are plain Python, so curves are composed by calling them::
 import math
 
 __all__ = [
+    "clamped",
     "exponential",
     "inverse_linear",
     "inverse_quadratic",

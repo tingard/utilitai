@@ -144,7 +144,7 @@ class TestConsider:
 
 
 class TestScore:
-    def test_scores_every_option_in_order(self, things: ToConsider[Context]):
+    def test_scores_every_option(self, things: ToConsider[Context]):
         things.constant_option("a", 0.1)
         things.constant_option("b", 0.2)
         assert list(things.score(Context()).items()) == [

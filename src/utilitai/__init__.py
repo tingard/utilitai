@@ -7,16 +7,14 @@ is currently the most appealing.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import graphlib
 import inspect
 import logging
 import math
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from typing import (
     Any,
-    Callable,
-    Generic,
-    Iterator,
     Literal,
     NamedTuple,
     TypeVar,
@@ -27,33 +25,25 @@ from . import curves
 
 __all__ = ["ScoreFunction", "ToConsider", "curves"]
 
-ContextType = TypeVar("ContextType", contravariant=True)
+ContextType_contra = TypeVar("ContextType_contra", contravariant=True)
 
+ScoreFunction = Callable[..., float | None]
 """Scores how appealing an option is, given some context.
 
 Scores are compared against each other, so any float will do - but keeping
 them normalised (usually to ``[0, 1]``, using the helpers in
 :mod:`utilitai.curves`) makes them far easier to reason about.
 """
-ScoreFunction = Callable[..., float | None]
 
 
 _logger = logging.getLogger(__name__)
 
 
-def _log_nan(name: str, score: float):
-    if math.isnan(score):
-        _logger.warning("Option %s returned NaN", name)
-        return None
-    return score
-
-
 @dataclass
-class _DAGNode[ContextType]:
+class _DAGNode[ContextType_contra]:
     f: ScoreFunction
-    typ: Literal["option", "consideration", "requirement"]
+    typ: Literal["option", "consideration"]
     considerations: tuple[str, ...]
-    requirements: tuple[str, ...]
     priority: int = 0
 
 
@@ -62,7 +52,7 @@ class ScoreWithDeps(NamedTuple):
     deps: dict[str, float]
 
 
-class ToConsider(Generic[ContextType]):
+class ToConsider[ContextType_contra]:
     """A registry of the options an agent can choose between.
 
     Options are scoring functions which map a context to a float. The option
@@ -84,28 +74,28 @@ class ToConsider(Generic[ContextType]):
 
     def __init__(self) -> None:
         self._options: set[str] = set()
-        self._nodes: dict[str, _DAGNode[ContextType]] = {}
+        self._nodes: dict[str, _DAGNode[ContextType_contra]] = {}
 
     def __len__(self) -> int:
-        return len(self._options)
+        return len(self._nodes)
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._options)
+        return iter(self._nodes)
 
     def __contains__(self, name: object) -> bool:
-        return name in self._options
+        return name in self._nodes
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({', '.join(map(repr, self._options))})"
+        return f"{type(self).__name__}({', '.join(map(repr, self._nodes))})"
 
     @property
     def names(self) -> tuple[str, ...]:
-        """The name of every option, in the order they were added."""
-        return tuple(self._options)
+        """The name of every option or consideration (in no particular order)."""
+        return tuple(self._nodes)
 
     def __add_node(
         self,
-        typ: Literal["option", "consideration", "requirement"],
+        typ: Literal["option", "consideration"],
         name_or_func: str | ScoreFunction,
         /,
         priority: int = 0,
@@ -139,8 +129,8 @@ class ToConsider(Generic[ContextType]):
     def consideration(
         self, name_or_func: str | ScoreFunction, /
     ) -> ScoreFunction | Callable[[ScoreFunction], ScoreFunction]:
-        """Add a consideration which one or many options,other considerations,
-        or requirments may depend on.
+        """Add a consideration which one or many options or other
+        considerations, may depend on.
         """
         return self.__add_node("consideration", name_or_func)
 
@@ -191,16 +181,18 @@ class ToConsider(Generic[ContextType]):
         Useful as a baseline: a constant option wins whenever nothing else
         scores above it.
         """
+        if math.isnan(value):
+            raise ValueError("Constant option value cannot be NaN.")
         if not isinstance(name, str):
-            raise ValueError("Name must be a string")
+            raise TypeError("Name must be a string")
         value = float(value)
 
-        def _inner(ctx: ContextType):
+        def _inner(ctx: ContextType_contra):
             return value
 
         self._register(name, _inner, "option", priority=priority)
 
-    def score(self, context: ContextType) -> dict[str, ScoreWithDeps]:
+    def score(self, context: ContextType_contra) -> dict[str, ScoreWithDeps]:
         """Score every option against *context*, keyed by option name.
 
         Options which return NaN or None (or have dependencies which do)
@@ -217,7 +209,7 @@ class ToConsider(Generic[ContextType]):
             for c in node.considerations:
                 if (cached_value := cache[c]) is None:
                     _logger.debug(
-                        "%S %s requirement %s not met", node.typ, node_name, c
+                        "%s %s consideration %s not met", node.typ, node_name, c
                     )
                     considerations_met = False
                     # Could break here for efficiency, but we'd lose debug information
@@ -233,7 +225,7 @@ class ToConsider(Generic[ContextType]):
                 continue
             # A NaN is likely an error in the function - be loud
             if math.isnan(score):
-                _logger.warning("%S %s returned NaN", node.typ, node_name)
+                _logger.warning("%s %s returned NaN", node.typ, node_name)
                 cache[node_name] = None
                 continue
             # Cache the computed value for downstream
@@ -242,7 +234,7 @@ class ToConsider(Generic[ContextType]):
                 out[node_name] = ScoreWithDeps(score, kw)
         return out
 
-    def consider(self, context: ContextType) -> str:
+    def consider(self, context: ContextType_contra) -> str:
         """Return the name of the highest scoring option for *context*.
 
         Ties are broken in favour of whichever option was added first.
@@ -259,7 +251,7 @@ class ToConsider(Generic[ContextType]):
             # Score functions may have returned NaN / None.
             raise ValueError("No good options - no valid options available.")
         # `max` returns the first maximal element, so earlier options win ties
-        best = max(scores, key=lambda k: scores[k][0])
+        best = self.consider_from_scores(scores)
         _logger.debug(
             "Considered %s options, chose %r",
             scores,
@@ -267,7 +259,9 @@ class ToConsider(Generic[ContextType]):
         )
         return best
 
-    def consider_from_scores(self, scores: dict[str, float]) -> str:
+    def consider_from_scores(
+        self, scores: dict[str, float] | dict[str, ScoreWithDeps]
+    ) -> str:
         """Utility function allowing re-use of a scoring dict. This exists to avoid
         re-computing scores while allowing external access to the scores dict.
         """
@@ -275,50 +269,61 @@ class ToConsider(Generic[ContextType]):
             raise ValueError("Nothing to consider - no options have been added")
 
         try:
-            # Sort nodes from highest priority to lowest so that the max takes the higher
-            # priority of matching scores.
-            best = max(sorted(scores.keys()), key=lambda k: -self._nodes[k].priority)
+
+            def _key(k):
+                score_ = scores[k]
+                # Handle that this might be ScoreWithDeps
+                if isinstance(score_, tuple):
+                    score = score_.score
+                else:
+                    score = score_
+                return (-score, -self._nodes[k].priority, k)
+
+            best = min(scores, key=_key)
         except KeyError as e:
             raise KeyError(
                 "Unknown node - required to ensure priority is respected!"
             ) from e
-        _logger.debug(
-            "Considered %s options, chose %r",
-            scores,
-            best,
-        )
         return best
 
     def _register(
         self,
         name: str,
         func: ScoreFunction,
-        typ: Literal["option", "consideration", "requirement"],
+        typ: Literal["option", "consideration"],
         priority: int = 0,
     ) -> ScoreFunction:
+        if not isinstance(name, str):
+            raise TypeError("Name must be a valid string identifier.")
+        if typ == "consideration" and not name.isidentifier():
+            raise TypeError(
+                "Consideration name must be a valid string identifier to be used in"
+                " the dependency tree! This means only names you could use as a"
+                " variable."
+            )
         if name in self._nodes:
             raise ValueError(f"A function named {name!r} has already been added")
-        if not isinstance(name, str):
-            raise ValueError("Name must be a string.")
-        sig = inspect.signature(func)
+        sig = inspect.signature(func, eval_str=True)
         considerations = []
-        requirements = []
         # Zeroth arg must be ctx
         for arg in list(sig.parameters.values())[1:]:
             if (v := self._nodes.get(arg.name, None)) is None:
                 raise ValueError(f'Unknown dependency "{arg.name}"')
-            if not issubclass(arg.annotation, (int, float, inspect._empty)):
+            if not isinstance(arg.annotation, type):
+                raise TypeError("Cannot handle this kind of type annotation.")
+            if (
+                not issubclass(arg.annotation, (int, float))
+                and arg.annotation is not inspect.Parameter.empty
+            ):
                 raise ValueError(
                     f'Expected type annotation as a float or int, got "{arg.annotation}"'
                 )
             match v.typ:
                 case "consideration":
                     considerations.append(arg.name)
-                case "requirement":
-                    requirements.append(arg.name)
                 case "option":
                     raise ValueError(
-                        f"A {type} cannot depend on the output of an option - only of considerations or requirements."
+                        f"A {type} cannot depend on the output of an option - only considerations."
                     )
                 case _:
                     raise ValueError(f"Unknown type {v.typ}")
@@ -326,25 +331,21 @@ class ToConsider(Generic[ContextType]):
             func,
             typ=typ,
             considerations=tuple(considerations),
-            requirements=tuple(requirements),
             priority=priority,
         )
         # Check that by adding this we do not create cycles, and revert if so.
         try:
             self._get_dag_compute_order()
-        except RuntimeError:
+        except graphlib.CycleError as e:
             del self._nodes[name]
-            raise
+            raise ValueError("Cannot create a cyclic chain of considerations") from e
         if typ == "option":
             self._options.add(name)
         return func
 
     def _get_dag_compute_order(self):
         ts = graphlib.TopologicalSorter(
-            {
-                name: {*node.considerations, *node.requirements}
-                for name, node in self._nodes.items()
-            }
+            {name: node.considerations for name, node in self._nodes.items()}
         )
         return tuple(ts.static_order())
 

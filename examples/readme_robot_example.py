@@ -2,8 +2,8 @@
 
 import logging
 import math
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 
 from utilitai import ToConsider, curves
 
@@ -94,8 +94,10 @@ def main():
 
     # Perception
     state = update_state_from_sensors(state)
+    print(state)
     # Planning (ish)
     best_action = actions.consider(state)
+    print(best_action)
     # Control - maybe using btreeny!
     control_robot_from_action(best_action, state)
 
