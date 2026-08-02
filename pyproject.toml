@@ -27,3 +27,8 @@ source = "vcs"
 
 [tool.hatch.version.raw-options]
 version_scheme = "no-guess-dev"
+
+[tool.pyrefly]
+project-includes = ["src/**/*.py", "tests/**/*.py", "examples/**/*.py"]
+[tool.pyrefly.errors]
+unused-ignore = true

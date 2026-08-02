@@ -19,6 +19,7 @@ from typing import (
     Concatenate,
     Literal,
     NamedTuple,
+    ParamSpec,
     TypeVar,
     overload,
 )
@@ -29,6 +30,7 @@ __all__ = ["ScoreFunction", "ToConsider", "curves"]
 
 ContextType_contra = TypeVar("ContextType_contra", contravariant=True)
 
+
 ScoreFunction = Callable[Concatenate[ContextType_contra, ...], float | None]
 """Scores how appealing an option is, given some context.
 
@@ -36,6 +38,11 @@ Scores are compared against each other, so any float will do - but keeping
 them normalised (usually to ``[0, 1]``, using the helpers in
 :mod:`utilitai.curves`) makes them far easier to reason about.
 """
+
+C = TypeVar("C")
+P = ParamSpec("P")
+R = TypeVar("R")
+type _Scorer[C, **P, R] = Callable[Concatenate[C, P], R]
 
 
 _logger = logging.getLogger(__name__)
@@ -96,13 +103,18 @@ class ToConsider[ContextType_contra]:
         """The name of every option or consideration (in no particular order)."""
         return tuple(self._nodes)
 
-    def __add_node(
+    def __add_node[**P, R: float | None](
         self,
         typ: Literal["option", "consideration"],
-        name_or_func: str | ScoreFunction,
+        name_or_func: str | _Scorer[ContextType_contra, P, R],
         /,
         priority: int = 0,
-    ) -> ScoreFunction | Callable[[ScoreFunction], ScoreFunction]:
+    ) -> (
+        _Scorer[ContextType_contra, P, R]
+        | Callable[
+            [_Scorer[ContextType_contra, P, R]], _Scorer[ContextType_contra, P, R]
+        ]
+    ):
         if callable(name_or_func):
             return self._register(
                 _infer_name(name_or_func), name_or_func, typ, priority=priority
@@ -114,7 +126,9 @@ class ToConsider[ContextType_contra]:
             )
         name = name_or_func
 
-        def _decorate(func: ScoreFunction) -> ScoreFunction:
+        def _decorate(
+            func: _Scorer[ContextType_contra, P, R],
+        ) -> _Scorer[ContextType_contra, P, R]:
             return self._register(name, func, typ, priority=priority)
 
         return _decorate
@@ -138,20 +152,30 @@ class ToConsider[ContextType_contra]:
         return self.__add_node("consideration", name_or_func)
 
     @overload
-    def option(
+    def option[**P, R: float | None](
         self, name_or_func: str, /, priority: int = 0
-    ) -> Callable[[ScoreFunction], ScoreFunction]:
+    ) -> Callable[
+        [_Scorer[ContextType_contra, P, R]], _Scorer[ContextType_contra, P, R]
+    ]:
         raise NotImplementedError()
 
     @overload
-    def option(
-        self, name_or_func: ScoreFunction, /, priority: int = 0
-    ) -> ScoreFunction:
+    def option[**P, R: float | None](
+        self, name_or_func: _Scorer[ContextType_contra, P, R], /, priority: int = 0
+    ) -> _Scorer[ContextType_contra, P, R]:
         raise NotImplementedError()
 
-    def option(
-        self, name_or_func: str | ScoreFunction, /, priority: int = 0
-    ) -> ScoreFunction | Callable[[ScoreFunction], ScoreFunction]:
+    def option[**P, R: float | None](
+        self,
+        name_or_func: str | _Scorer[ContextType_contra, P, R],
+        /,
+        priority: int = 0,
+    ) -> (
+        _Scorer[ContextType_contra, P, R]
+        | Callable[
+            [_Scorer[ContextType_contra, P, R]], _Scorer[ContextType_contra, P, R]
+        ]
+    ):
         """Add an option to consider.
 
         Can be used either as a bare decorator, in which case the option takes
@@ -295,13 +319,13 @@ class ToConsider[ContextType_contra]:
             ) from e
         return best
 
-    def _register(
+    def _register[**P, R: float | None](
         self,
         name: str,
-        func: ScoreFunction,
+        func: _Scorer[ContextType_contra, P, R],
         typ: Literal["option", "consideration"],
         priority: int = 0,
-    ) -> ScoreFunction:
+    ) -> _Scorer[ContextType_contra, P, R]:
         if not isinstance(name, str):
             raise TypeError("Name must be a valid string identifier.")
         if typ == "consideration" and not name.isidentifier():
@@ -321,17 +345,20 @@ class ToConsider[ContextType_contra]:
                 " type object, but this function accepts no arguments!"
             )
         for arg in list(sig.parameters.values())[1:]:
+            if arg.kind not in (arg.POSITIONAL_OR_KEYWORD, arg.KEYWORD_ONLY):
+                raise TypeError(
+                    f"Args must support keyword injection, got {arg.kind} arg {arg.name}"
+                )
             if (v := self._nodes.get(arg.name, None)) is None:
                 raise ValueError(f'Unknown dependency "{arg.name}"')
-            if isinstance(arg.annotation, str):
+            if arg.annotation is inspect.Parameter.empty:
+                pass  # unannotated is fine
+            elif isinstance(arg.annotation, str):
                 if arg.annotation != "float":
                     raise TypeError(f'Cannot handle type annotation "{arg.annotation}"')
             elif not isinstance(arg.annotation, type):
                 raise TypeError("Cannot handle this kind of type annotation.")
-            elif (
-                arg.annotation is not float
-                and arg.annotation is not inspect.Parameter.empty
-            ):
+            elif arg.annotation is not float:
                 raise TypeError(
                     f'Expected type annotation as a float, got "{arg.annotation}"'
                 )
