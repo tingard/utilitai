@@ -134,8 +134,8 @@ class TestDependencyValidation:
         ):
             things.consideration("derived")(lambda ctx, eat: eat)
 
-    @pytest.mark.parametrize("annotation", [float, int, bool])
-    def test_accepts_numeric_annotations(
+    @pytest.mark.parametrize("annotation", [complex, int, bool])
+    def test_does_not_accept_numeric_annotations_other_than_float(
         self, things: ToConsider[Context], annotation: type
     ):
         things.consideration("dep")(lambda ctx: 1.0)
@@ -144,8 +144,8 @@ class TestDependencyValidation:
             return dep
 
         option.__annotations__["dep"] = annotation
-        things.option("opt")(option)
-        assert things.score(Context())["opt"].score == 1.0
+        with pytest.raises(TypeError):
+            things.option("opt")(option)
 
     def test_accepts_unannotated_dependencies(self, things: ToConsider[Context]):
         things.consideration("dep")(lambda ctx: 1.0)
@@ -154,7 +154,7 @@ class TestDependencyValidation:
 
     def test_rejects_non_numeric_annotations(self, things: ToConsider[Context]):
         things.consideration("dep")(lambda ctx: 1.0)
-        with pytest.raises(ValueError, match="Expected type annotation"):
+        with pytest.raises(TypeError, match="Expected type annotation as a float"):
 
             @things.option
             def opt(ctx: Context, dep: str) -> float:
@@ -162,14 +162,17 @@ class TestDependencyValidation:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="issubclass() is called on the raw annotation, so PEP 563 string "
-        "annotations and unions such as `float | None` raise TypeError",
+        reason="issubclass() is called on the raw annotation, so PEP 563 string"
+        " annotations and unions such as `float | None` or `float | int` raise"
+        " TypeError, despite being valid as they would accept a float.",
     )
     def test_accepts_union_annotations(self, things: ToConsider[Context]):
         things.consideration("dep")(lambda ctx: 1.0)
 
-        def option(ctx: Context, dep: float | None):
+        def option(ctx: Context, dep):
             return dep
+
+        option.__annotations__["dep"] = float | None
 
         things.option("opt")(option)
         assert things.score(Context())["opt"].score == 1.0
@@ -436,7 +439,9 @@ class TestConsiderFromScores:
 
     def test_rejects_unknown_names(self, things: ToConsider[Context]):
         things.constant_option("sleep", 0.1)
-        with pytest.raises(KeyError, match="Unknown node"):
+        with pytest.raises(
+            ValueError, match=r"Unrecognised option name\(s\): not registered"
+        ):
             things.consider_from_scores({"not registered": 1.0})
 
     def test_rejects_an_empty_mapping(self, things: ToConsider[Context]):

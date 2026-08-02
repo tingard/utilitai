@@ -107,22 +107,23 @@ class TestConsider:
         self, things: ToConsider[Context]
     ):
         @things.option
-        def eat_food(ctx: Context) -> float:
+        def a(ctx: Context) -> float:
             return curves.exponential(ctx.hunger) * curves.is_gt_zero(ctx.food)
 
-        things.constant_option("starve", 0.0)
+        things.constant_option("b", 0.0)
 
         assert things.score(Context(hunger=1, food=0)) == {
-            "eat_food": (0.0, {}),
-            "starve": (0.0, {}),
+            "a": (0.0, {}),
+            "b": (0.0, {}),
         }
-        # ...so the earlier option wins. Add baselines first to win ties.
-        assert things.consider(Context(hunger=1, food=0)) == "eat_food"
+        # ...so the alphabetically lower option wins. Add baselines first to win ties.
+        assert things.consider(Context(hunger=1, food=0)) == "a"
 
-    def test_ties_favour_the_first_added_option(self, things: ToConsider[Context]):
-        things.constant_option("first", 1.0)
-        things.constant_option("second", 1.0)
-        assert things.consider(Context()) == "first"
+    def test_ties_favour_alphabetical(self, things: ToConsider[Context]):
+        things.constant_option("b", 1.0)
+        things.constant_option("a", 1.0)
+        things.constant_option("c", 1.0)
+        assert things.consider(Context()) == "a"
 
     def test_handles_negative_scores(self, things: ToConsider[Context]):
         things.constant_option("bad", -10.0)
@@ -147,10 +148,10 @@ class TestScore:
     def test_scores_every_option(self, things: ToConsider[Context]):
         things.constant_option("a", 0.1)
         things.constant_option("b", 0.2)
-        assert list(things.score(Context()).items()) == [
-            ("a", (0.1, {})),
-            ("b", (0.2, {})),
-        ]
+        scores = things.score(Context())
+        assert scores["a"] == (0.1, {})
+        assert scores["b"] == (0.2, {})
+        assert len(scores) == 2
 
     def test_empty_registry_scores_nothing(self, things: ToConsider[Context]):
         assert things.score(Context()) == {}
@@ -183,3 +184,17 @@ class TestContainer:
         other: ToConsider[Context] = ToConsider()
         one.constant_option("thing", 1.0)
         assert other.names == ()
+
+    def test_cached_search_regenerates(self, things: ToConsider[Context]):
+        things.constant_option("a", 1.0)
+        # TODO: Is it better to monkeypatch here than test against a private
+        # method?
+        search_order_1 = things._get_dag_compute_order()
+        assert isinstance(search_order_1, tuple)
+
+        search_order_2 = things._get_dag_compute_order()
+        # Due to caching, these should be identical tuples
+        assert search_order_1 is search_order_2
+        things.constant_option("b", 1.0)
+        search_order_3 = things._get_dag_compute_order()
+        assert search_order_2 is not search_order_3

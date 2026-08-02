@@ -39,7 +39,7 @@ def go_to_the_shops(ctx: Context):
 # Names can be inferred from function name
 @things.option
 def eat_food(ctx: Context):
-    hunger_level = curves.logistic(hunger / MAX_HUNGER, midpoint=0.5)
+    hunger_level = curves.logistic(ctx.hunger / MAX_HUNGER, midpoint=0.5)
     return hunger_level * curves.is_gt_zero(ctx.food)
 
 
