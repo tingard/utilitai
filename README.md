@@ -119,7 +119,7 @@ def has_food(ctx: Context):
 
 @things.consideration
 def hunger_level(ctx: Context):
-    return curves.logistic(hunger / MAX_HUNGER, midpoint=0.5)
+    return curves.logistic(ctx.hunger / MAX_HUNGER, midpoint=0.5)
 
 
 # Note that now the utility of eat_food and go_to_the_shops will be

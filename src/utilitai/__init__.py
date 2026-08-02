@@ -16,6 +16,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import (
     Any,
+    Concatenate,
     Literal,
     NamedTuple,
     TypeVar,
@@ -28,7 +29,7 @@ __all__ = ["ScoreFunction", "ToConsider", "curves"]
 
 ContextType_contra = TypeVar("ContextType_contra", contravariant=True)
 
-ScoreFunction = Callable[..., float | None]
+ScoreFunction = Callable[Concatenate[ContextType_contra, ...], float | None]
 """Scores how appealing an option is, given some context.
 
 Scores are compared against each other, so any float will do - but keeping
@@ -183,11 +184,11 @@ class ToConsider[ContextType_contra]:
         Useful as a baseline: a constant option wins whenever nothing else
         scores above it.
         """
+        value = float(value)
         if math.isnan(value):
             raise ValueError("Constant option value cannot be NaN.")
         if not isinstance(name, str):
             raise TypeError("Name must be a string")
-        value = float(value)
 
         def _inner(ctx: ContextType_contra):
             return value
@@ -226,6 +227,7 @@ class ToConsider[ContextType_contra]:
                 cache[node_name] = None
                 continue
             # A NaN is likely an error in the function - be loud
+            score = float(score)
             if math.isnan(score):
                 _logger.warning("%s %s returned NaN", node.typ, node_name)
                 cache[node_name] = None
@@ -278,9 +280,11 @@ class ToConsider[ContextType_contra]:
             score_ = scores[k]
             # Handle that this might be ScoreWithDeps
             if isinstance(score_, tuple):
-                score = score_.score
+                score = float(score_.score)
             else:
-                score = score_
+                score = float(score_)
+            if math.isnan(score):
+                raise ValueError("Score dict contains NaNs")
             return (-score, -self._nodes[k].priority, k)
 
         try:
@@ -311,6 +315,11 @@ class ToConsider[ContextType_contra]:
         sig = inspect.signature(func)
         considerations = []
         # Zeroth arg must be ctx
+        if len(sig.parameters) == 0:
+            raise TypeError(
+                f"The first argument accepted by a {typ} function should be a context"
+                " type object, but this function accepts no arguments!"
+            )
         for arg in list(sig.parameters.values())[1:]:
             if (v := self._nodes.get(arg.name, None)) is None:
                 raise ValueError(f'Unknown dependency "{arg.name}"')
@@ -331,7 +340,7 @@ class ToConsider[ContextType_contra]:
                     considerations.append(arg.name)
                 case "option":
                     raise ValueError(
-                        f"A {type} cannot depend on the output of an option - only considerations."
+                        f"A {typ} cannot depend on the output of an option - only considerations."
                     )
                 case _:
                     raise ValueError(f"Unknown type {v.typ}")
@@ -341,12 +350,9 @@ class ToConsider[ContextType_contra]:
             considerations=tuple(considerations),
             priority=priority,
         )
-        # Check that by adding this we do not create cycles, and revert if so.
-        try:
-            self._get_dag_compute_order()
-        except graphlib.CycleError as e:
-            del self._nodes[name]
-            raise ValueError("Cannot create a cyclic chain of considerations") from e
+        # We _could_ do a cycle detection check, but since inserting a node
+        # requires all dependency nodes to already be present, and you can't
+        # override an existing node name, we should be safe.
         if typ == "option":
             self._options.add(name)
         self._sort_cache = None
@@ -367,7 +373,7 @@ class ToConsider[ContextType_contra]:
             to_search.extend(not_yet_searched)
             to_include.update(not_yet_searched)
         ts = graphlib.TopologicalSorter(
-            {name: self._nodes[name].considerations for name in to_include}
+            {name: self._nodes[name].considerations for name in sorted(to_include)}
         )
         self._sort_cache = tuple(ts.static_order())
         return self._sort_cache

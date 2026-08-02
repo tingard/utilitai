@@ -428,6 +428,12 @@ class TestConsiderFromScores:
 
         assert things.consider_from_scores({"low": 1.0, "high": 1.0}) == "high"
 
+    def test_raises_on_NaN(self, things: ToConsider[Context]):
+        things.constant_option("low", 1.0, priority=0)
+        things.constant_option("high", 1.0, priority=10)
+        with pytest.raises(ValueError):
+            assert things.consider_from_scores({"low": float("nan"), "high": 1.0})
+
     def test_agrees_with_consider(self, things: ToConsider[Context]):
         things.consideration("hunger_level")(lambda ctx: ctx.hunger / 10)
         things.option("eat")(lambda ctx, hunger_level: hunger_level)
