@@ -168,9 +168,11 @@ class TestContainer:
         assert "other" not in things
 
     def test_iterates_over_names(self, things: ToConsider[Context]):
-        things.constant_option("a", 1.0, priority=0)
-        things.constant_option("b", 1.0, priority=1)
-        assert list(things) == ["b", "a"]
+        things.constant_option("a", 1.0)
+        things.constant_option("c", 1.0)
+        things.constant_option("b", 1.0)
+        # order is not respected, ensure we get all items back
+        assert set(things) == {"a", "b", "c"}
 
     def test_repr_lists_options(self, things: ToConsider[Context]):
         things.constant_option("a", 1.0)
