@@ -39,25 +39,25 @@ goals: ToConsider[HunterGathererState] = ToConsider()
 
 # Sleeping is a constant baseline - we do it whenever nothing else appeals.
 # Adding it first means it also wins any ties.
-goals.add_constant("sleep", 0.1)
+goals.constant_option("sleep", 0.1)
 
 
-@goals.add("eat")
-def eat(state: HunterGathererState) -> float:
+@goals.option("eat")
+def eat(ctx: HunterGathererState) -> float:
     # The hungrier we get the more we want to eat - but only if we have food
-    return curves.smoothstep(hunger(state)) * curves.is_gt_zero(total_food(state))
+    return curves.smoothstep(hunger(ctx)) * curves.is_gt_zero(total_food(ctx))
 
 
-@goals.add("forage for fruit")
-def forage_for_fruit(state: HunterGathererState) -> float:
+@goals.option("forage for fruit")
+def forage_for_fruit(ctx: HunterGathererState) -> float:
     # The less fruit we have in store, the more we want to find some.
     # Fruit is worth more than nuts, so we're keener to go looking for it
-    return 0.6 * curves.inverse_linear(min(state.food_supplies.fruit / 3, 1.0))
+    return 0.6 * curves.inverse_linear(min(ctx.food_supplies.fruit / 3, 1.0))
 
 
-@goals.add("forage for nuts")
-def forage_for_nuts(state: HunterGathererState) -> float:
-    return 0.5 * curves.inverse_linear(min(state.food_supplies.nuts / 5, 1.0))
+@goals.option("forage for nuts")
+def forage_for_nuts(ctx: HunterGathererState) -> float:
+    return 0.5 * curves.inverse_linear(min(ctx.food_supplies.nuts / 5, 1.0))
 
 
 def main():

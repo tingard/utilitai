@@ -2,7 +2,7 @@
 
 Scoring functions are plain Python, so curves are composed by calling them::
 
-    @things.add("eat food")
+    @things.option("eat food")
     def eat_food(ctx: Context) -> float:
         return curves.clamped(curves.exponential(ctx.hunger) * curves.is_gt_zero(ctx.food))
 """

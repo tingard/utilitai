@@ -43,29 +43,29 @@ def has_valid_path(state: RobotState) -> bool:
 actions: ToConsider[RobotState] = ToConsider()
 
 # If we have no good choices, do nothing
-actions.add_constant("do nothing", 1e-6)
+actions.constant_option("do nothing", 1e-6)
 
 
-@actions.add("recharge")
+@actions.option("recharge")
 def recharge(state: RobotState) -> float:
     # As our battery gets lower, our desire to stop and recharge gets higher
     battery_used = 1 - state.remaining_battery_percentage / 100
     return curves.inverse_quadratic(battery_used)
 
 
-@actions.add("move to goal")
+@actions.option("move to goal")
 def move_to_goal(state: RobotState) -> float:
     if is_at_goal(state) or not has_valid_path(state):
         return 0.0
     return 0.9 if can_reach_goal_with_battery(state) else 0.1
 
 
-@actions.add("replan path")
+@actions.option("replan path")
 def replan_path(state: RobotState) -> float:
     return 0.0 if has_valid_path(state) else 1.0
 
 
-@actions.add("do a dance")
+@actions.option("do a dance")
 def do_a_dance(state: RobotState) -> float:
     # Dancing before we make it to the goal would be silly!
     return 1.0 if is_at_goal(state) else 0.0
