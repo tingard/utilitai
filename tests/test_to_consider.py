@@ -134,6 +134,10 @@ class TestConsider:
         with pytest.raises(ValueError, match="Nothing to consider"):
             things.consider(Context())
 
+    def test_raises_when_function_without_args(self, things: ToConsider[Context]):
+        with pytest.raises(TypeError):
+            things.option("foo")(lambda: 1.0)
+
     def test_passes_the_context_through(self, things: ToConsider[Context]):
         seen: list[Context] = []
         things.option("watcher")(lambda ctx: seen.append(ctx) or 1.0)
