@@ -1,7 +1,9 @@
 """The example from the README - a robot deciding what to do next."""
 
+import logging
 import math
 from dataclasses import dataclass
+import os
 
 from utilitai import ToConsider, curves
 
@@ -70,14 +72,18 @@ def do_a_dance(state: RobotState) -> float:
 
 
 def update_state_from_sensors(state: RobotState) -> RobotState:
-    raise NotImplementedError()
+    # ...
+    return state
 
 
 def control_robot_from_action(action: str, state: RobotState):
-    raise NotImplementedError()
+    pass
 
 
 def main():
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO").upper(), format="%(message)s"
+    )
     state = RobotState(
         remaining_battery_mAh=3000,
         meters_per_mAh=1.234,
@@ -85,13 +91,13 @@ def main():
         robot_position=(0, 0),
         goal_position=(500, 0),
     )
-    while True:
-        # Perception
-        state = update_state_from_sensors(state)
-        # Planning (ish)
-        best_action = actions.consider(state)
-        # Control - maybe using btreeny!
-        control_robot_from_action(best_action, state)
+
+    # Perception
+    state = update_state_from_sensors(state)
+    # Planning (ish)
+    best_action = actions.consider(state)
+    # Control - maybe using btreeny!
+    control_robot_from_action(best_action, state)
 
 
 if __name__ == "__main__":

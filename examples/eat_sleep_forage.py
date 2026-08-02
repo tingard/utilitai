@@ -5,6 +5,7 @@ DEBUG to see the score every option received on each tick.
 """
 
 import logging
+import os
 import random
 from dataclasses import dataclass, field
 
@@ -60,7 +61,9 @@ def forage_for_nuts(state: HunterGathererState) -> float:
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO").upper(), format="%(message)s"
+    )
     logger = logging.getLogger("hunter_gatherer")
 
     state = HunterGathererState()
