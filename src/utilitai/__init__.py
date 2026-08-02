@@ -26,10 +26,9 @@ from typing import (
 
 from . import curves
 
-__all__ = ["ScoreFunction", "ToConsider", "curves"]
+__all__ = ["ScoreFunction", "ScoreWithDeps", "ToConsider", "curves"]
 
 ContextType_contra = TypeVar("ContextType_contra", contravariant=True)
-
 
 ScoreFunction = Callable[Concatenate[ContextType_contra, ...], float | None]
 """Scores how appealing an option is, given some context.
