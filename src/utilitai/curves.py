@@ -94,7 +94,7 @@ def smoothstep(val: float) -> float:
     Unlike the other curves, the input is clamped to [0, 1] - outside that
     range the polynomial turns back on itself and stops being monotonic.
     """
-    val = max(0.0, min(1.0, val))
+    val = clamped(val)
     return val * val * (3.0 - 2.0 * val)
 
 
@@ -116,4 +116,7 @@ def clamped(val: float) -> float:
     """Hard-clamp a value to [0, 1]. Bounding utility scores between
     0 and 1 is recommended to aid composition.
     """
+    # Propagate NaNs
+    if math.isnan(val):
+        return val
     return min(1.0, max(0.0, val))

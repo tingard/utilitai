@@ -453,3 +453,8 @@ class TestConsiderFromScores:
     def test_rejects_an_empty_mapping(self, things: ToConsider[Context]):
         with pytest.raises(ValueError):
             things.consider_from_scores({})
+
+    def test_mixing_contexts_is_a_type_error(self, things: ToConsider[Context]):
+        @things.option  # pyrefly: ignore
+        def foo(ctx: None):
+            return 1.0

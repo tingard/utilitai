@@ -9,14 +9,16 @@ authors = [
 requires-python = ">=3.12"
 dependencies = []
 
+[project.optional-dependencies]
+btreeny = ["btreeny>=0.3.0,<0.4"]
+
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "btreeny>=0.1.5",
-    "hatch>=1.14.1,<1.15.0",
+    "btreeny>=0.3.0,<0.4",
     "pyrefly>=0.24.2",
     "pytest>=8.4.1",
     "ruff>=0.16",
@@ -27,3 +29,8 @@ source = "vcs"
 
 [tool.hatch.version.raw-options]
 version_scheme = "no-guess-dev"
+
+[tool.pyrefly]
+project-includes = ["src/**/*.py", "tests/**/*.py", "examples/**/*.py"]
+[tool.pyrefly.errors]
+unused-ignore = true

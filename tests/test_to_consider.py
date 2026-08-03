@@ -136,7 +136,34 @@ class TestConsider:
 
     def test_raises_when_function_without_args(self, things: ToConsider[Context]):
         with pytest.raises(TypeError):
-            things.option("foo")(lambda: 1.0)
+            things.option("foo")(lambda: 1.0)  # pyrefly: ignore
+
+    def test_raises_when_function_uses_position_only_args(
+        self, things: ToConsider[Context]
+    ):
+        @things.consideration
+        def foo(ctx: Context):
+            return 1.0
+
+        with pytest.raises(TypeError):
+
+            @things.option
+            def bar(ctx: Context, bar: float, /):
+                return 1.0
+
+    def test_raises_when_function_uses_args(self, things: ToConsider[Context]):
+        with pytest.raises(TypeError):
+
+            @things.option
+            def foo(ctx: Context, *args):
+                return 1.0
+
+    def test_raises_when_function_uses_kwargs(self, things: ToConsider[Context]):
+        with pytest.raises(TypeError):
+
+            @things.option
+            def foo(ctx: Context, **kwargs):
+                return 1.0
 
     def test_passes_the_context_through(self, things: ToConsider[Context]):
         seen: list[Context] = []
