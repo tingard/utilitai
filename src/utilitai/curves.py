@@ -8,10 +8,12 @@ Scoring functions are plain Python, so curves are composed by calling them::
 """
 
 import math
+from functools import reduce
 
 __all__ = [
     "clamped",
     "exponential",
+    "geometric_mean",
     "inverse_linear",
     "inverse_quadratic",
     "is_gt_zero",
@@ -120,3 +122,24 @@ def clamped(val: float) -> float:
     if math.isnan(val):
         return val
     return min(1.0, max(0.0, val))
+
+
+def geometric_mean(*val: float):
+    """Compute the geometric mean of a series of utility values.
+
+    Using Geometric mean rather than a raw multiplication better
+    accounts for chained multiplications from multiple consideration
+    values.
+
+    For example, if we have utilities
+
+    * `option_1 = consideration_a`
+    * `option_2 = consideration_b * consideration_c`
+
+    It is comparatively harder for `option_2` to win, as it will
+    be the multiple of two values, each in 0-1. By compensating,
+    we re-weight the result to make `option_2` more likely, with
+    reweighting determined by the number of multiplied
+    considerations.
+    """
+    return reduce(float.__mul__, val) ** (1 / len(val))
