@@ -8,7 +8,6 @@ Scoring functions are plain Python, so curves are composed by calling them::
 """
 
 import math
-from functools import reduce
 
 __all__ = [
     "clamped",
@@ -142,4 +141,8 @@ def geometric_mean(*val: float):
     reweighting determined by the number of multiplied
     considerations.
     """
+    if len(val) == 0:
+        raise ValueError("Expected at least one value to compute the mean of")
+    if any(v < 0 for v in val):
+        raise ValueError("Values cannot be negative")
     return math.prod(val) ** (1 / len(val))
