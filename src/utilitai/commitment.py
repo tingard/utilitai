@@ -68,7 +68,7 @@ class Commitment[ContextType]:
 
     def __init__(
         self,
-        options: ToConsider[ContextType],
+        to_consider: ToConsider[ContextType],
         *,
         get_current: _Reader[ContextType],
         set_current: _Writer[ContextType],
@@ -77,9 +77,9 @@ class Commitment[ContextType]:
         abandon_below: float | None = None,
         log_scores: bool = False,
     ) -> None:
-        if default is not None and default not in options:
+        if default is not None and default not in to_consider.options:
             raise ValueError(f"Default option {default!r} is not registered")
-        self._options = options
+        self._to_consider = to_consider
         self._preempt = preempt
         self._get_current = get_current
         self._set_current = set_current
@@ -125,7 +125,7 @@ class Commitment[ContextType]:
 
     @property
     def options(self) -> ToConsider[ContextType]:
-        return self._options
+        return self._to_consider
 
     @property
     def default(self) -> str | None:
@@ -142,7 +142,7 @@ class Commitment[ContextType]:
         Includes considerations as well as options, since ``ToConsider`` does
         not currently expose the two separately.
         """
-        names = set(self._options.names)
+        names = set(self._to_consider.names)
         if self._preempt is not None:
             names |= set(self._preempt.names)
         if self._default is not None:
@@ -176,10 +176,10 @@ class Commitment[ContextType]:
         if current is not None:
             if self._abandon_below is None and not self._log_scores:
                 return current
-            scores = self._options.score(context)
+            scores = self._to_consider.score(context)
             if self._log_scores:
                 _logger.debug("committed to %r, scores were %s", current, scores)
-            if current not in self._options:
+            if current not in self._to_consider.options:
                 # An interrupt is running. It is scored against `preempt`, not
                 # against the routine registry, so it would look like it had
                 # collapsed on every tick. Interrupts run to completion.
@@ -198,9 +198,11 @@ class Commitment[ContextType]:
             self._set_current(context, None)
 
         if scores is None:
-            scores = self._options.score(context)
+            scores = self._to_consider.score(context)
         chosen = (
-            self._options.consider_from_scores(scores) if len(scores) else self._default
+            self._to_consider.consider_from_scores(scores)
+            if len(scores)
+            else self._default
         )
         if chosen is None:
             raise NoValidOptionError(

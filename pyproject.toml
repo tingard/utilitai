@@ -1,13 +1,18 @@
 [project]
 name = "utilitai"
 dynamic = ["version"]
-description = "A minimal Python Utility AI library"
+description = "An ergonomic Python Utility AI library"
 readme = "README.md"
 authors = [
     { name = "Tim Lingard", email = "tklingard@gmail.com" }
 ]
 requires-python = ">=3.12"
 dependencies = []
+
+license = "MIT"
+license-files = ["LICENCE*"]
+
+keywords = ["robotics", "utility AI", "decision intelligence"]
 
 [project.optional-dependencies]
 btreeny = ["btreeny>=0.3.0,<0.4"]

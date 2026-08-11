@@ -296,7 +296,7 @@ class TestAbandonBelow:
         ctx = Context(danger=True)
 
         assert c.key_for(ctx) == "investigate"
-        assert "investigate" not in duties, "precondition: not a routine option"
+        assert "investigate" not in duties.options, "precondition: not a routine option"
         # Held, not abandoned, even though it scores nothing in `duties`
         assert c.key_for(ctx) == "investigate"
         assert c.key_for(ctx) == "investigate"

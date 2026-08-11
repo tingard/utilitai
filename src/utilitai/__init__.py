@@ -12,15 +12,13 @@ import inspect
 import logging
 import math
 from collections import deque
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import (
     Any,
     Concatenate,
     Literal,
     NamedTuple,
-    ParamSpec,
-    TypeVar,
     overload,
 )
 
@@ -28,9 +26,7 @@ from . import curves
 
 __all__ = ["ScoreFunction", "ScoreWithDeps", "ToConsider", "curves"]
 
-ContextType_contra = TypeVar("ContextType_contra", contravariant=True)
-
-ScoreFunction = Callable[Concatenate[ContextType_contra, ...], float | None]
+type ScoreFunction[ContextType] = Callable[Concatenate[ContextType, ...], float | None]
 """Scores how appealing an option is, given some context.
 
 Scores are compared against each other, so any float will do - but keeping
@@ -38,9 +34,6 @@ them normalised (usually to ``[0, 1]``, using the helpers in
 :mod:`utilitai.curves`) makes them far easier to reason about.
 """
 
-C = TypeVar("C")
-P = ParamSpec("P")
-R = TypeVar("R")
 type _Scorer[C, **P, R] = Callable[Concatenate[C, P], R]
 
 
@@ -48,8 +41,8 @@ _logger = logging.getLogger(__name__)
 
 
 @dataclass
-class _DAGNode[ContextType_contra]:
-    f: ScoreFunction
+class _DAGNode[ContextType]:
+    f: ScoreFunction[ContextType]
     typ: Literal["option", "consideration"]
     considerations: tuple[str, ...]
     priority: int = 0
@@ -60,7 +53,7 @@ class ScoreWithDeps(NamedTuple):
     deps: dict[str, float]
 
 
-class ToConsider[ContextType_contra]:
+class ToConsider[ContextType]:
     """A registry of the options an agent can choose between.
 
     Options are scoring functions which map a context to a float. The option
@@ -82,17 +75,16 @@ class ToConsider[ContextType_contra]:
 
     def __init__(self) -> None:
         self._options: set[str] = set()
-        self._nodes: dict[str, _DAGNode[ContextType_contra]] = {}
+        self._nodes: dict[str, _DAGNode[ContextType]] = {}
         self._sort_cache: None | tuple[str, ...] = None
 
-    def __len__(self) -> int:
-        return len(self._nodes)
+    @property
+    def options(self) -> frozenset[str]:
+        return frozenset(self._options)
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._nodes)
-
-    def __contains__(self, name: object) -> bool:
-        return name in self._nodes
+    @property
+    def considerations(self) -> frozenset[str]:
+        return frozenset(c for c, v in self._nodes.items() if v.typ == "consideration")
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({', '.join(map(repr, self._nodes))})"
@@ -105,14 +97,12 @@ class ToConsider[ContextType_contra]:
     def __add_node[**P, R: float | None](
         self,
         typ: Literal["option", "consideration"],
-        name_or_func: str | _Scorer[ContextType_contra, P, R],
+        name_or_func: str | _Scorer[ContextType, P, R],
         /,
         priority: int = 0,
     ) -> (
-        _Scorer[ContextType_contra, P, R]
-        | Callable[
-            [_Scorer[ContextType_contra, P, R]], _Scorer[ContextType_contra, P, R]
-        ]
+        _Scorer[ContextType, P, R]
+        | Callable[[_Scorer[ContextType, P, R]], _Scorer[ContextType, P, R]]
     ):
         if callable(name_or_func):
             return self._register(
@@ -126,8 +116,8 @@ class ToConsider[ContextType_contra]:
         name = name_or_func
 
         def _decorate(
-            func: _Scorer[ContextType_contra, P, R],
-        ) -> _Scorer[ContextType_contra, P, R]:
+            func: _Scorer[ContextType, P, R],
+        ) -> _Scorer[ContextType, P, R]:
             return self._register(name, func, typ, priority=priority)
 
         return _decorate
@@ -135,16 +125,21 @@ class ToConsider[ContextType_contra]:
     @overload
     def consideration(
         self, name_or_func: str, /
-    ) -> Callable[[ScoreFunction], ScoreFunction]:
+    ) -> Callable[[ScoreFunction[ContextType]], ScoreFunction[ContextType]]:
         raise NotImplementedError()
 
     @overload
-    def consideration(self, name_or_func: ScoreFunction, /) -> ScoreFunction:
+    def consideration(
+        self, name_or_func: ScoreFunction[ContextType], /
+    ) -> ScoreFunction[ContextType]:
         raise NotImplementedError()
 
     def consideration(
-        self, name_or_func: str | ScoreFunction, /
-    ) -> ScoreFunction | Callable[[ScoreFunction], ScoreFunction]:
+        self, name_or_func: str | ScoreFunction[ContextType], /
+    ) -> (
+        ScoreFunction[ContextType]
+        | Callable[[ScoreFunction[ContextType]], ScoreFunction[ContextType]]
+    ):
         """Add a consideration which one or many options or other
         considerations, may depend on.
         """
@@ -153,27 +148,23 @@ class ToConsider[ContextType_contra]:
     @overload
     def option[**P, R: float | None](
         self, name_or_func: str, /, priority: int = 0
-    ) -> Callable[
-        [_Scorer[ContextType_contra, P, R]], _Scorer[ContextType_contra, P, R]
-    ]:
+    ) -> Callable[[_Scorer[ContextType, P, R]], _Scorer[ContextType, P, R]]:
         raise NotImplementedError()
 
     @overload
     def option[**P, R: float | None](
-        self, name_or_func: _Scorer[ContextType_contra, P, R], /, priority: int = 0
-    ) -> _Scorer[ContextType_contra, P, R]:
+        self, name_or_func: _Scorer[ContextType, P, R], /, priority: int = 0
+    ) -> _Scorer[ContextType, P, R]:
         raise NotImplementedError()
 
     def option[**P, R: float | None](
         self,
-        name_or_func: str | _Scorer[ContextType_contra, P, R],
+        name_or_func: str | _Scorer[ContextType, P, R],
         /,
         priority: int = 0,
     ) -> (
-        _Scorer[ContextType_contra, P, R]
-        | Callable[
-            [_Scorer[ContextType_contra, P, R]], _Scorer[ContextType_contra, P, R]
-        ]
+        _Scorer[ContextType, P, R]
+        | Callable[[_Scorer[ContextType, P, R]], _Scorer[ContextType, P, R]]
     ):
         """Add an option to consider.
 
@@ -213,12 +204,12 @@ class ToConsider[ContextType_contra]:
         if not isinstance(name, str):
             raise TypeError("Name must be a string")
 
-        def _inner(ctx: ContextType_contra):
+        def _inner(ctx: ContextType):
             return value
 
         self._register(name, _inner, "option", priority=priority)
 
-    def score(self, context: ContextType_contra) -> dict[str, ScoreWithDeps]:
+    def score(self, context: ContextType) -> dict[str, ScoreWithDeps]:
         """Score every option against *context*, keyed by option name.
 
         Options which return NaN or None (or have dependencies which do)
@@ -261,7 +252,7 @@ class ToConsider[ContextType_contra]:
                 out[node_name] = ScoreWithDeps(score, kw)
         return out
 
-    def consider(self, context: ContextType_contra) -> str:
+    def consider(self, context: ContextType) -> str:
         """Return the name of the highest scoring option for *context*.
 
         Ties are broken using priority specification, followed by
@@ -321,10 +312,10 @@ class ToConsider[ContextType_contra]:
     def _register[**P, R: float | None](
         self,
         name: str,
-        func: _Scorer[ContextType_contra, P, R],
+        func: _Scorer[ContextType, P, R],
         typ: Literal["option", "consideration"],
         priority: int = 0,
-    ) -> _Scorer[ContextType_contra, P, R]:
+    ) -> _Scorer[ContextType, P, R]:
         if not isinstance(name, str):
             raise TypeError("Name must be a valid string identifier.")
         if typ == "consideration" and not name.isidentifier():

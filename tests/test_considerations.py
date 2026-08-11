@@ -77,9 +77,9 @@ class TestRegistration:
 
     def test_considerations_are_included(self, things: ToConsider[Context]):
         things.consideration("hunger_level")(lambda ctx: 1.0)
-        assert len(things) == 1
+        assert len(things.considerations) == 1
         assert things.names == ("hunger_level",)
-        assert "hunger_level" in things
+        assert "hunger_level" in things.considerations
         with pytest.raises(ValueError, match="Nothing to consider"):
             things.consider(Context())
 
