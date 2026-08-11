@@ -102,9 +102,7 @@ class ToConsider[ContextType]:
         priority: int = 0,
     ) -> (
         _Scorer[ContextType, P, R]
-        | Callable[
-            [_Scorer[ContextType, P, R]], _Scorer[ContextType, P, R]
-        ]
+        | Callable[[_Scorer[ContextType, P, R]], _Scorer[ContextType, P, R]]
     ):
         if callable(name_or_func):
             return self._register(
@@ -131,12 +129,17 @@ class ToConsider[ContextType]:
         raise NotImplementedError()
 
     @overload
-    def consideration(self, name_or_func: ScoreFunction[ContextType], /) -> ScoreFunction[ContextType]:
+    def consideration(
+        self, name_or_func: ScoreFunction[ContextType], /
+    ) -> ScoreFunction[ContextType]:
         raise NotImplementedError()
 
     def consideration(
         self, name_or_func: str | ScoreFunction[ContextType], /
-    ) -> ScoreFunction[ContextType] | Callable[[ScoreFunction[ContextType]], ScoreFunction[ContextType]]:
+    ) -> (
+        ScoreFunction[ContextType]
+        | Callable[[ScoreFunction[ContextType]], ScoreFunction[ContextType]]
+    ):
         """Add a consideration which one or many options or other
         considerations, may depend on.
         """
@@ -145,9 +148,7 @@ class ToConsider[ContextType]:
     @overload
     def option[**P, R: float | None](
         self, name_or_func: str, /, priority: int = 0
-    ) -> Callable[
-        [_Scorer[ContextType, P, R]], _Scorer[ContextType, P, R]
-    ]:
+    ) -> Callable[[_Scorer[ContextType, P, R]], _Scorer[ContextType, P, R]]:
         raise NotImplementedError()
 
     @overload
@@ -163,9 +164,7 @@ class ToConsider[ContextType]:
         priority: int = 0,
     ) -> (
         _Scorer[ContextType, P, R]
-        | Callable[
-            [_Scorer[ContextType, P, R]], _Scorer[ContextType, P, R]
-        ]
+        | Callable[[_Scorer[ContextType, P, R]], _Scorer[ContextType, P, R]]
     ):
         """Add an option to consider.
 

@@ -39,7 +39,7 @@ import logging
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
 
-from .commitment import Commitment
+from ..commitment import Commitment
 
 try:
     import btreeny as _bt

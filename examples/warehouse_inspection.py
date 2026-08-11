@@ -28,7 +28,7 @@ from dataclasses import dataclass
 import btreeny
 
 from utilitai import ToConsider, curves
-from utilitai.btreeny import Commitment, committed
+from utilitai.integrations.btreeny import Commitment, committed
 
 logger = logging.getLogger("warehouse")
 
