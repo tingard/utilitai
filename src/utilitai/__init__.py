@@ -12,7 +12,7 @@ import inspect
 import logging
 import math
 from collections import deque
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import (
     Any,
@@ -85,14 +85,13 @@ class ToConsider[ContextType_contra]:
         self._nodes: dict[str, _DAGNode[ContextType_contra]] = {}
         self._sort_cache: None | tuple[str, ...] = None
 
-    def __len__(self) -> int:
-        return len(self._nodes)
+    @property
+    def options(self) -> frozenset[str]:
+        return frozenset(self._options)
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._nodes)
-
-    def __contains__(self, name: object) -> bool:
-        return name in self._nodes
+    @property
+    def considerations(self) -> frozenset[str]:
+        return frozenset(c for c, v in self._nodes.items() if v.typ == "consideration")
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({', '.join(map(repr, self._nodes))})"

@@ -190,21 +190,21 @@ class TestScore:
 
 class TestContainer:
     def test_len(self, things: ToConsider[Context]):
-        assert len(things) == 0
+        assert len(things.options) == 0
         things.constant_option("thing", 1.0)
-        assert len(things) == 1
+        assert len(things.options) == 1
 
     def test_contains(self, things: ToConsider[Context]):
         things.constant_option("thing", 1.0)
-        assert "thing" in things
-        assert "other" not in things
+        assert "thing" in things.options
+        assert "other" not in things.options
 
     def test_iterates_over_names(self, things: ToConsider[Context]):
         things.constant_option("a", 1.0)
         things.constant_option("c", 1.0)
         things.constant_option("b", 1.0)
         # order is not respected, ensure we get all items back
-        assert set(things) == {"a", "b", "c"}
+        assert things.options == {"a", "b", "c"}
 
     def test_repr_lists_options(self, things: ToConsider[Context]):
         things.constant_option("a", 1.0)

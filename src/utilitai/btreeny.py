@@ -52,18 +52,9 @@ except ModuleNotFoundError as e:  # pragma: no cover - exercised in a bare env
 if TYPE_CHECKING:
     from btreeny import IdType, TreeNode, TreeStatus
 
-__all__ = ["Commitment", "NoValidOptionError", "committed"]
+__all__ = ["Commitment", "committed"]
 
 _logger = logging.getLogger(__name__)
-
-
-class NoValidOptionError(RuntimeError):
-    """Raised when nothing scores and no fallback was configured.
-
-    A ``key_fn`` runs inside the tree tick, so raising here will tear down the
-    whole tree. Pass ``default=`` to :class:`Commitment` to make this
-    impossible.
-    """
 
 
 @_bt.action
