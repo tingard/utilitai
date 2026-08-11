@@ -142,4 +142,4 @@ def geometric_mean(*val: float):
     reweighting determined by the number of multiplied
     considerations.
     """
-    return reduce(float.__mul__, val) ** (1 / len(val))
+    return math.prod(val) ** (1 / len(val))
