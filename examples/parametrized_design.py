@@ -58,8 +58,10 @@ def c(ctx: Context):
     return 0.1
 
 # Add a new top_k kwarg to limit the number of options that are returned
-# None means all
-scores = things.score(Context(), top_k=None)
+# None means all?
+scores = things.score(Context())
+for score in scores:
+    print(score)
 # Return is scores with parameters, sorted from best to worst
 assert scores == [
     ('a', {"bar": "x"}, 1.0),

@@ -7,13 +7,16 @@ is currently the most appealing.
 
 from __future__ import annotations
 
+from functools import lru_cache
 import graphlib
 import inspect
+import itertools
 import logging
 import math
-from collections import deque
-from collections.abc import Callable
+from collections import OrderedDict, deque
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from multiprocessing import Value
 from typing import (
     Any,
     Concatenate,
@@ -34,8 +37,13 @@ them normalised (usually to ``[0, 1]``, using the helpers in
 :mod:`utilitai.curves`) makes them far easier to reason about.
 """
 
-type _Scorer[C, **P, R] = Callable[Concatenate[C, P], R]
+type ParamFunction[ContextType] = Callable[Concatenate[ContextType, ...], Iterable[str]]
+"""Responsible for returning parameter options given a context.
+"""
 
+
+type _Scorer[C, **P, R] = Callable[Concatenate[C, P], R]
+type _Parametrizer[C, **P, R] = Callable[Concatenate[C, P], R]
 
 _logger = logging.getLogger(__name__)
 
@@ -45,6 +53,7 @@ class _DAGNode[ContextType]:
     f: ScoreFunction[ContextType]
     typ: Literal["option", "consideration"]
     considerations: tuple[str, ...]
+    parameters: tuple[str, ...]
     priority: int = 0
 
 
@@ -76,6 +85,7 @@ class ToConsider[ContextType]:
     def __init__(self) -> None:
         self._options: set[str] = set()
         self._nodes: dict[str, _DAGNode[ContextType]] = {}
+        self._parameters: dict[str, ParamFunction[ContextType]] = {}
         self._sort_cache: None | tuple[str, ...] = None
 
     @property
@@ -85,6 +95,10 @@ class ToConsider[ContextType]:
     @property
     def considerations(self) -> frozenset[str]:
         return frozenset(c for c, v in self._nodes.items() if v.typ == "consideration")
+
+    @property
+    def parameters(self) -> frozenset[str]:
+        return frozenset(self._parameters)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({', '.join(map(repr, self._nodes))})"
@@ -209,50 +223,133 @@ class ToConsider[ContextType]:
 
         self._register(name, _inner, "option", priority=priority)
 
-    def score(self, context: ContextType) -> dict[str, ScoreWithDeps]:
+    @overload
+    def parameter[**P, R: Iterable[str]](
+        self, name_or_func: str, /,
+    ) -> Callable[[_Parametrizer[ContextType, P, R]], _Parametrizer[ContextType, P, R]]:
+        raise NotImplementedError()
+
+    @overload
+    def parameter[**P, R: Iterable[str]](
+        self, name_or_func: _Parametrizer[ContextType, P, R], /,
+    ) -> _Parametrizer[ContextType, P, R]:
+        raise NotImplementedError()
+
+    def parameter[**P, R: Iterable[str]](
+        self,
+        name_or_func: str | _Parametrizer[ContextType, P, R],
+        /,
+    ) -> (
+        _Parametrizer[ContextType, P, R]
+        | Callable[[_Parametrizer[ContextType, P, R]], _Parametrizer[ContextType, P, R]]
+    ):
+        """Add a parameter generator.
+
+        Can be used either as a bare decorator, in which case the parameter takes
+        the name of the decorated function, or called with a name to use
+        instead::
+
+            @things.parameter
+            def a(ctx: Context) -> Iterable[str]: ...
+
+            @things.parameter("b")
+            def _(ctx: Context) -> Iterable[str]: ...
+
+        The decorated function is returned unchanged, so it can still be
+        called, tested, or reused by other scoring functions directly.
+
+        Raises
+        ------
+        ValueError
+            If an parameter, option or consideration with the same name has
+            already been added.
+        TypeError
+            If *name_or_func* is neither a string nor a callable, or if a name
+            cannot be inferred from the decorated function (lambdas, for
+            example, must be given an explicit name).
+        """
+        if callable(name_or_func):
+            if (name := _infer_name(name_or_func)) in self.names:
+                raise ValueError(f"Name {name} is already in use.")
+            self._parameters[_infer_name(name_or_func)] = name_or_func
+            return name_or_func
+        if not isinstance(name_or_func, str):
+            raise TypeError(
+                "Expected a name or a scoring function, got "
+                f"{type(name_or_func).__name__}"
+            )
+        name = name_or_func
+
+        def _decorate(
+            func: _Scorer[ContextType, P, R],
+        ) -> _Scorer[ContextType, P, R]:
+            if name in self.names:
+                raise ValueError(f"Name {name} is already in use.")
+            self._parameters[name] = func
+            return func
+
+        return _decorate
+
+    def score(self, context: ContextType) -> list[tuple[str, dict[str, Any], ScoreWithDeps]]:
         """Score every option against *context*, keyed by option name.
 
         Options which return NaN or None (or have dependencies which do)
         will not be returned.
         """
         order = self._get_dag_compute_order()
-        cache: dict[str, float | None] = {}
-        out: dict[str, ScoreWithDeps] = {}
-        # Compute nodes in order to correctly populate the dependency tree
-        for node_name in order:
-            node = self._nodes[node_name]
-            kw: dict[str, float] = {}
-            considerations_met = True
-            for c in node.considerations:
-                if (cached_value := cache[c]) is None:
-                    _logger.debug(
-                        "%s %s consideration %s not met", node.typ, node_name, c
-                    )
-                    considerations_met = False
-                    # Could break here for efficiency, but we'd lose debug information
-                    continue
-                kw[c] = cached_value
-            if not considerations_met:
-                cache[node_name] = None
-                continue
-            score = node.f(context, **kw)
-            # A None is this node intentionally backing out
-            if score is None:
-                cache[node_name] = None
-                continue
-            # A NaN is likely an error in the function - be loud
-            score = float(score)
-            if math.isnan(score):
-                _logger.warning("%s %s returned NaN", node.typ, node_name)
-                cache[node_name] = None
-                continue
-            # Cache the computed value for downstream
-            cache[node_name] = score
-            if node_name in self._options:
-                out[node_name] = ScoreWithDeps(score, kw)
-        return out
+        out: list[tuple[str, dict[str, Any], ScoreWithDeps]] = []
 
-    def consider(self, context: ContextType) -> str:
+        # Naive cartesian product over all parametrizations as a first pass
+        for params in map(dict, itertools.product(*(
+            [(p, v) for v in ps(context)]
+            for p, ps in self._parameters.items()
+        ))):
+            # Cache from consideration name to its values for each parameter
+            # combination
+            cache: dict[str, float | None] = {}
+            # Compute nodes in order to correctly populate the dependency tree
+            for node_name in order:
+                node = self._nodes[node_name]
+                kw: dict[str, Any] = {
+                    p: v
+                    for p, v in params.items()
+                    if p in node.parameters
+                }
+                # We need to understand all of the possible parametrizations of this node
+                # this is driven by
+                # * the node's own parameterization
+                # * the active parametrizations of its dependency tree
+                considerations_met = True
+                for c in node.considerations:
+                    if (cached_value := cache[c]) is None:
+                        _logger.debug(
+                            "%s %s consideration %s not met", node.typ, node_name, c
+                        )
+                        considerations_met = False
+                        # Could break here for efficiency, but we'd lose debug information
+                        continue
+                    kw[c] = cached_value
+                if not considerations_met:
+                    cache[node_name] = None
+                    continue
+                score = node.f(context, **kw)
+                # A None is this node intentionally backing out
+                if score is None:
+                    cache[node_name] = None
+                    continue
+                # A NaN is likely an error in the function - be loud
+                score = float(score)
+                if math.isnan(score):
+                    _logger.warning("%s %s returned NaN", node.typ, node_name)
+                    cache[node_name] = None
+                    continue
+                # Cache the computed value for downstream
+                cache[node_name] = score
+                if node_name in self._options:
+                    out.append((node_name, params, ScoreWithDeps(score, kw)))
+        return sorted(out, key=lambda v: -v[2].score)
+
+    def consider(self, context: ContextType) -> tuple[str, dict[str, Any]]:
         """Return the name of the highest scoring option for *context*.
 
         Ties are broken using priority specification, followed by
@@ -279,30 +376,26 @@ class ToConsider[ContextType]:
         return best
 
     def consider_from_scores(
-        self, scores: dict[str, float] | dict[str, ScoreWithDeps]
-    ) -> str:
+        self, scores: list[tuple[str, dict[str, Any], ScoreWithDeps]]
+    ) -> tuple[str, dict[str, Any]]:
         """Utility function allowing re-use of a scoring dict. This exists to avoid
         re-computing scores while allowing external access to the scores dict.
         """
         if len(scores) == 0:
             raise ValueError("Nothing to consider - no options have been added")
         if not all(s in self._options for s in scores):
-            missing = [s for s in scores if s not in self._options]
+            missing = [s for s, _, _ in scores if s not in self._options]
             raise ValueError(f"Unrecognised option name(s): {', '.join(missing)}")
 
-        def _key(k):
-            score_ = scores[k]
-            # Handle that this might be ScoreWithDeps
-            if isinstance(score_, tuple):
-                score = float(score_.score)
-            else:
-                score = float(score_)
+        def _key(v: tuple[str, dict[str, Any], ScoreWithDeps]):
+            option, params, score_with_deps = v
+            score = score_with_deps.score
             if math.isnan(score):
                 raise ValueError("Score dict contains NaNs")
-            return (-score, -self._nodes[k].priority, k)
+            return (-score, -self._nodes[option].priority, option)
 
         try:
-            best = min(scores, key=_key)
+            best = min(scores, key=_key)[:2]
         except KeyError as e:
             raise KeyError(
                 "Unknown node - required to ensure priority is respected!"
@@ -328,6 +421,7 @@ class ToConsider[ContextType]:
             raise ValueError(f"A function named {name!r} has already been added")
         sig = inspect.signature(func)
         considerations = []
+        parameters: list[str] = []
         # Zeroth arg must be ctx
         if len(sig.parameters) == 0:
             raise TypeError(
@@ -339,33 +433,35 @@ class ToConsider[ContextType]:
                 raise TypeError(
                     f"Args must support keyword injection, got {arg.kind} arg {arg.name}"
                 )
-            if (v := self._nodes.get(arg.name, None)) is None:
-                raise ValueError(f'Unknown dependency "{arg.name}"')
-            if arg.annotation is inspect.Parameter.empty:
-                pass  # unannotated is fine
-            elif isinstance(arg.annotation, str):
-                if arg.annotation != "float":
-                    raise TypeError(f'Cannot handle type annotation "{arg.annotation}"')
-            elif not isinstance(arg.annotation, type):
-                raise TypeError("Cannot handle this kind of type annotation.")
-            elif arg.annotation is not float:
-                raise TypeError(
-                    f'Expected type annotation as a float, got "{arg.annotation}"'
-                )
-            match v.typ:
-                case "consideration":
-                    considerations.append(arg.name)
-                case "option":
-                    raise ValueError(
-                        f"A {typ} cannot depend on the output of an option - only considerations."
-                    )
-                case _:
-                    raise ValueError(f"Unknown type {v.typ}")
+            # Check that this is a known this is a consideration or option
+            p = None
+            if (
+                (v := self._nodes.get(arg.name, None)) is None
+                and
+                (p := self._parameters.get(arg.name, None)) is None
+            ):
+                    raise ValueError(f'Unknown dependency "{arg.name}"')
+            if v is not None:
+                match v.typ:
+                    case "consideration":
+                        self._check_arg_ok(arg, v.typ)
+                        considerations.append(arg.name)
+                    case "option":
+                        raise ValueError(
+                            f"A {typ} cannot depend on the output of an option - only considerations."
+                        )
+                    case _:
+                        raise ValueError(f"Unknown type {v.typ}")
+            elif p is not None:
+                self._check_param_arg_ok(arg)
+                parameters.append(arg.name)
+
         self._nodes[name] = _DAGNode(
             func,
             typ=typ,
             considerations=tuple(considerations),
             priority=priority,
+            parameters=tuple(parameters),
         )
         # We _could_ do a cycle detection check, but since inserting a node
         # requires all dependency nodes to already be present, and you can't
@@ -374,6 +470,32 @@ class ToConsider[ContextType]:
             self._options.add(name)
         self._sort_cache = None
         return func
+
+    def _check_arg_ok(self, arg, typ: Literal['option', 'consideration']):
+        if arg.annotation is inspect.Parameter.empty:
+            pass  # unannotated is fine
+        elif isinstance(arg.annotation, str):
+            if arg.annotation != "float":
+                raise TypeError(f'Cannot handle {typ} type annotation {arg.annotation}"')
+        elif not isinstance(arg.annotation, type):
+            raise TypeError("Cannot handle this kind of type annotation.")
+        elif arg.annotation is not float:
+            raise TypeError(
+                f'Expected {typ} annotation as a float, got "{arg.annotation}"'
+            )
+
+    def _check_param_arg_ok(self, arg):
+        if arg.annotation is inspect.Parameter.empty:
+            pass  # unannotated is fine
+        elif isinstance(arg.annotation, str):
+            if arg.annotation != "str":
+                raise TypeError(f'Cannot handle parameter type annotation {arg.annotation}"')
+        elif not isinstance(arg.annotation, type):
+            raise TypeError("Cannot handle this kind of type annotation.")
+        elif arg.annotation is not str:
+            raise TypeError(
+                f'Expected parameter annotation as a float, got "{arg.annotation}"'
+            )
 
     def _get_dag_compute_order(self) -> tuple[str, ...]:
         if self._sort_cache is not None:
