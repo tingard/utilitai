@@ -142,12 +142,12 @@ class Commitment[ContextType]:
         Includes considerations as well as options, since ``ToConsider`` does
         not currently expose the two separately.
         """
-        names = set(self._to_consider.names)
+        names = self._to_consider.options
         if self._preempt is not None:
-            names |= set(self._preempt.names)
+            names = names.union(self._preempt.names)
         if self._default is not None:
-            names.add(self._default)
-        return frozenset(names)
+            names = names.union((self._default,))
+        return names
 
     def release(self, context: ContextType) -> None:
         """Drop the current commitment, so the next tick decides afresh."""
